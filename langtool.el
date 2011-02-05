@@ -109,7 +109,7 @@ String that separated by comma or list of string.
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
    "Suggestion: \\(\\(?:.*\\)\n\\(?:.*\\)\n\\(?:.*\\)\\)\n"
-    "\n"
+    "\n?"
    ))
 
 (defvar langtool-buffer-process nil)
