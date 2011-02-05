@@ -64,11 +64,18 @@
 
 ;;; Code:
 
+(eval-when-compile
+  (require 'cl))
+
 (require 'flymake)
 
 (defgroup langtool nil
   "Customize langtool"
   :group 'applications)
+
+(defvar current-prefix-arg)
+(defvar unread-command-events)
+(defvar locale-language-names)
 
 (defcustom langtool-java-bin "java"
   "*Executing java command."
