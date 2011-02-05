@@ -1,4 +1,4 @@
-;;; langtool --- Context check utility using LanguageTool
+;;; langtool --- Grammer check utility using LanguageTool
 
 ;; Author: Hayashi Masahiro <mhayashi1120@gmail.com>
 ;; Keywords: grammer checker java
