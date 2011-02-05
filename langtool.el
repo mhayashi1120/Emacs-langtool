@@ -1,7 +1,7 @@
 ;;; langtool --- Context check utility using LanguageTool
 
 ;; Author: Hayashi Masahiro <mhayashi1120@gmail.com>
-;; Keywords: spel checker java
+;; Keywords: grammer checker java
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; URL: http://www.emacswiki.org/emacs/download/langtool.el
 ;; Emacs: GNU Emacs 22 or later
@@ -61,7 +61,6 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * next/prev error
 
 ;;; Code:
 
