@@ -42,6 +42,10 @@
 ;;
 ;; Currently GNU java version not works.
 ;;     (setq langtool-java-bin "/path/to/java")
+;;
+;; If you want to specify your mother tongue.
+;;     (setq langtool-mother-tongue "en")
+
 
 ;;; Usage:
 
@@ -92,7 +96,7 @@
   :group 'langtool
   :type 'string)
 
-(defcustom langtool-mothertongue nil
+(defcustom langtool-mother-tongue nil
   "*Your mothertongue Language name pass to LanguageTool."
   :group 'langtool
   :type 'string)
@@ -189,8 +193,8 @@ Optional \\[universal-argument] read LANG name."
                        "-c" (langtool-java-coding-system buffer-file-coding-system)
                        "-l" (or lang langtool-default-language)
                        "-d" (langtool-disabled-rules)))
-      (when langtool-mothertongue
-        (setq args (append args (list "-m" langtool-mothertongue))))
+      (when langtool-mother-tongue
+        (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
       (let* ((buffer (langtool-process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
@@ -210,7 +214,9 @@ Optional \\[universal-argument] read LANG name."
     nil))
 
 (defun langtool-read-lang-name ()
-  (completing-read "Lang: " locale-language-names))
+  (completing-read "Lang: " 
+                   (or (mapcar 'list (langtool-available-languages))
+                       locale-language-names)))
 
 (defun langtool-create-overlay (line column message)
   (save-excursion
@@ -323,6 +329,17 @@ Optional \\[universal-argument] read LANG name."
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
+
+(defun langtool-available-languages ()
+  (when (stringp langtool-language-tool-jar)
+    (let ((dir (expand-file-name "rules" (file-name-directory langtool-language-tool-jar))))
+      (when (file-directory-p dir)
+        (remove nil
+                (mapcar
+                 (lambda (f)
+                   (when (file-directory-p f)
+                     (file-name-nondirectory f)))
+                 (directory-files dir t "^[^.].$")))))))
 
 ;;TODO
 (defun langtool-java-coding-system (coding-system)
