@@ -36,6 +36,7 @@
 ;;
 ;;     (global-set-key "\C-x4w" 'langtool-check-buffer)
 ;;     (global-set-key "\C-x4W" 'langtool-check-done)
+;;     (global-set-key "\C-x4l" 'langtool-switch-default-language)
 ;;     (global-set-key "\C-x4n" 'langtool-goto-next-error)
 ;;     (global-set-key "\C-x4p" 'langtool-goto-previous-error)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
@@ -202,6 +203,12 @@ Optional \\[universal-argument] read LANG name."
         (set-process-sentinel proc 'langtool-process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
         (setq langtool-buffer-process proc)))))
+
+(defun langtool-switch-default-language (lang)
+  "Switch `langtool-read-lang-name' to LANG"
+  (interactive (list (langtool-read-lang-name)))
+  (setq langtool-default-language lang)
+  (message "Now default language is `%s'" lang))
 
 (defun langtool-goto-error (overlays predicate)
   (catch 'done
