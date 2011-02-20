@@ -92,6 +92,11 @@
   :group 'langtool
   :type 'string)
 
+(defcustom langtool-mothertongue nil
+  "*Your mothertongue Language name pass to LanguageTool."
+  :group 'langtool
+  :type 'string)
+
 (defcustom langtool-disabled-rules nil
   "*Disabled rules pass to LanguageTool.
 String that separated by comma or list of string.
@@ -183,8 +188,10 @@ Optional \\[universal-argument] read LANG name."
       (setq args (list "-jar" (expand-file-name langtool-language-tool-jar)
                        "-c" (langtool-java-coding-system buffer-file-coding-system)
                        "-l" (or lang langtool-default-language)
-                       "-d" (langtool-disabled-rules)
-                       file))
+                       "-d" (langtool-disabled-rules)))
+      (when langtool-mothertongue
+        (setq args (append args (list "-m" langtool-mothertongue))))
+      (setq args (append args (list file)))
       (let* ((buffer (langtool-process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
         (set-process-filter proc 'langtool-process-filter)
