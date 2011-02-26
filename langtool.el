@@ -1,10 +1,11 @@
-;;; langtool --- Grammer check utility using LanguageTool
+;;; langtool.el --- Grammer check utility using LanguageTool
 
 ;; Author: Hayashi Masahiro <mhayashi1120@gmail.com>
 ;; Keywords: grammer checker java
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; URL: http://www.emacswiki.org/emacs/download/langtool.el
 ;; Emacs: GNU Emacs 22 or later
+;; Version: 1.0.1
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -119,7 +120,7 @@ String that separated by comma or list of string.
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
    "Suggestion: \\(\\(?:.*\\)\n\\(?:.*\\)\n\\(?:.*\\)\\)\n"
-    "\n?"
+    "\n?"                               ; last result have no new-line
    ))
 
 (defvar langtool-buffer-process nil)
@@ -350,13 +351,33 @@ Optional \\[universal-argument] read LANG name."
 
 ;;TODO
 (defun langtool-java-coding-system (coding-system)
-  (let ((cs (coding-system-base coding-system)))
-    (case cs
-      (utf-8 "utf-8")
-      (euc-jp "euc-jp")
-      (shift_jis "sjis")
-      (iso-2022-7bit "iso2022jp")
-      (t "ascii"))))
+  (let* ((cs (coding-system-base coding-system))
+         (csname (symbol-name cs)))
+    (cond
+     ((string-match "utf-8" csname)
+      "utf-8")
+     ((string-match "euc.*jp" csname)
+      "euc-jp")
+     ((string-match "shift.jis" csname)
+      "sjis")
+     ((string-match "iso.*2022.*jp" csname)
+      "iso2022jp")
+     ((memq cs '(us-ascii raw-text undecided no-conversion))
+      "ascii")
+     (t
+      csname))))
+
+;; initialize mother tongue
+(unless langtool-mother-tongue
+  (setq langtool-mother-tongue
+        (let ((env (or (getenv "LANG")
+                       (getenv "LC_ALL")))
+              lang)
+          (and env
+               (string-match "^\\(..\\)_" env)
+               (setq lang (match-string 1 env))
+               (member lang (langtool-available-languages))
+               lang))))
 
 (provide 'langtool)
 
