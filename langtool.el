@@ -1,6 +1,6 @@
 ;;; langtool.el --- Grammer check utility using LanguageTool
 
-;; Author: Hayashi Masahiro <mhayashi1120@gmail.com>
+;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: grammer checker java
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; URL: http://www.emacswiki.org/emacs/download/langtool.el
