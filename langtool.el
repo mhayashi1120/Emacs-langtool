@@ -4,7 +4,7 @@
 ;; Keywords: grammer checker java
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.0.1
+;; Version: 1.1.0
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -66,6 +66,7 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
+;; * support suggestion.
 
 ;;; Code:
 
@@ -118,7 +119,8 @@ String that separated by comma or list of string.
   (concat
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
-   "Suggestion: \\(\\(?:.*\\)\n\\(?:.*\\)\n\\(?:.*\\)\\)\n"
+   "Suggestion: \\(.*\\)\n"
+   "\\(\\(?:.*\\)\n\\(?:.*\\)\\)\n"
     "\n?"                               ; last result have no new-line
    ))
 
@@ -171,7 +173,7 @@ String that separated by comma or list of string.
   (message "Cleaned up LanguageTool."))
 
 (defun langtool-check-buffer (&optional lang)
-  "Check context current buffer.
+  "Check context current buffer and light up errors.
 Optional \\[universal-argument] read LANG name."
   (interactive
    (when current-prefix-arg
@@ -225,7 +227,7 @@ Optional \\[universal-argument] read LANG name."
                    (or (mapcar 'list (langtool-available-languages))
                        locale-language-names)))
 
-(defun langtool-create-overlay (line column message)
+(defun langtool-create-overlay (line column length suggestions message)
   (save-excursion
     (goto-char (point-min))
     (condition-case nil
@@ -234,14 +236,14 @@ Optional \\[universal-argument] read LANG name."
           (let ((start (line-beginning-position))
                 (end (line-end-position)))
             (move-to-column column)
-            (backward-word)
             ;;FIXME LanguageTool column sometimes wrong!
             ;; restrict to current line
             (setq start (min end (max start (point))))
-            (forward-word 2)
+            (move-to-column (+ column length))
             (setq end (min end (point)))
             (let ((ov (make-overlay start end)))
               (overlay-put ov 'langtool-message message)
+              (overlay-put ov 'langtool-suggestions suggestions)
               (overlay-put ov 'priority 1)
               (overlay-put ov 'face 'flymake-errline))))
       ;;TODO ignore?
@@ -305,13 +307,20 @@ Optional \\[universal-argument] read LANG name."
           messages)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
-        (let ((line (string-to-number (match-string 1)))
-              (column (string-to-number (match-string 2)))
-              (message
-               (concat (match-string 3) "\n" 
-                       (match-string 4) (match-string 5))))
+        (let* ((line (string-to-number (match-string 1)))
+               (column (1- (string-to-number (match-string 2))))
+               (rule-id (match-string 3))
+               (suggest (match-string 5))
+               (msg1 (match-string 4))
+               (msg2 (match-string 6))
+               (message
+                (concat "Rule ID: " rule-id "\n"
+                        msg1 "\n\n" 
+                        msg2))
+               (suggestions (split-string suggest "; "))
+               (len (langtool--point-length msg2)))
           (setq messages (cons
-                          (list line column message)
+                          (list line column len suggestions message)
                           messages))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
@@ -320,9 +329,15 @@ Optional \\[universal-argument] read LANG name."
            (lambda (msg)
              (let ((line (nth 0 msg))
                    (col (nth 1 msg))
-                   (message (nth 2 msg)))
-               (langtool-create-overlay line col message)))
+                   (len (nth 2 msg))
+                   (sugs (nth 3 msg))
+                   (message (nth 4 msg)))
+               (langtool-create-overlay line col len sugs message)))
            messages))))))
+
+(defun langtool--point-length (message)
+  (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
+       (length (match-string 2 message))))
 
 (defun langtool-process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
