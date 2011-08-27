@@ -40,6 +40,7 @@
 ;;     (global-set-key "\C-x4n" 'langtool-goto-next-error)
 ;;     (global-set-key "\C-x4p" 'langtool-goto-previous-error)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
+;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ;;
 ;; Currently GNU java version not works.
 ;;     (setq langtool-java-bin "/path/to/java")
@@ -47,18 +48,21 @@
 ;; If you want to specify your mother tongue.
 ;;     (setq langtool-mother-tongue "en")
 
-
 ;;; Usage:
 
 ;; * To check current buffer and show warnings.
 ;;
 ;;  M-x langtool-check-buffer
-;;
+
+;; * To correct marker follow LanguageTool suggestions.
+;; 
+;;  M-x langtool-correct-buffer
+
 ;; * Goto warning point and
 ;;
 ;;  M-x langtool-show-message-at-point
 
-;; * To finish checking.
+;; * To finish checking. All marker is removed.
 ;;
 ;;  M-x langtool-check-done
 
@@ -212,6 +216,17 @@ Optional \\[universal-argument] read LANG name."
   (setq langtool-default-language lang)
   (message "Now default language is `%s'" lang))
 
+(defun langtool-correct-buffer ()
+  "Execute interactive correction after `langtool-check-buffer'"
+  (interactive)
+  (let ((ovs (langtool-overlays-region (point-min) (point-max))))
+    (if (null ovs)
+        (message "No error found. %s" 
+                 (substitute-command-keys 
+                  "Or type \\[langtool-check-buffer] to re-check buffer"))
+      (barf-if-buffer-read-only)
+      (langtool--correction ovs))))
+
 (defun langtool-goto-error (overlays predicate)
   (catch 'done
     (mapc
@@ -227,27 +242,34 @@ Optional \\[universal-argument] read LANG name."
                    (or (mapcar 'list (langtool-available-languages))
                        locale-language-names)))
 
-(defun langtool-create-overlay (line column length suggestions message)
-  (save-excursion
-    (goto-char (point-min))
-    (condition-case nil
-        (progn
-          (forward-line (1- line))
-          (let ((start (line-beginning-position))
-                (end (line-end-position)))
-            (move-to-column column)
-            ;;FIXME LanguageTool column sometimes wrong!
-            ;; restrict to current line
-            (setq start (min end (max start (point))))
-            (move-to-column (+ column length))
-            (setq end (min end (point)))
-            (let ((ov (make-overlay start end)))
-              (overlay-put ov 'langtool-message message)
-              (overlay-put ov 'langtool-suggestions suggestions)
-              (overlay-put ov 'priority 1)
-              (overlay-put ov 'face 'flymake-errline))))
-      ;;TODO ignore?
-      (end-of-buffer nil))))
+(defun langtool-create-overlay (tuple)
+  (let ((line (nth 0 tuple))
+        (col (nth 1 tuple))
+        (len (nth 2 tuple))
+        (sugs (nth 3 tuple))
+        (msg (nth 4 tuple))
+        (message (nth 5 tuple)))
+    (save-excursion
+      (goto-char (point-min))
+      (condition-case nil
+          (progn
+            (forward-line (1- line))
+            (let ((start (line-beginning-position))
+                  (end (line-end-position)))
+              (move-to-column col)
+              ;;FIXME LanguageTool column sometimes wrong!
+              ;; restrict to current line
+              (setq start (min end (max start (point))))
+              (move-to-column (+ col len))
+              (setq end (min end (point)))
+              (let ((ov (make-overlay start end)))
+                (overlay-put ov 'langtool-simple-message msg)
+                (overlay-put ov 'langtool-message message)
+                (overlay-put ov 'langtool-suggestions sugs)
+                (overlay-put ov 'priority 1)
+                (overlay-put ov 'face 'flymake-errline))))
+        ;;TODO ignore?
+        (end-of-buffer nil)))))
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 (defun langtool-current-error-messages ()
@@ -304,7 +326,7 @@ Optional \\[universal-argument] read LANG name."
     (let ((min (or (process-get proc 'langtool-process-done)
                    (point-min)))
           (buffer (process-get proc 'langtool-source-buffer))
-          messages)
+          n-tuple)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
         (let* ((line (string-to-number (match-string 1)))
@@ -312,6 +334,7 @@ Optional \\[universal-argument] read LANG name."
                (rule-id (match-string 3))
                (suggest (match-string 5))
                (msg1 (match-string 4))
+               ;; rest of line. Point the raw message.
                (msg2 (match-string 6))
                (message
                 (concat "Rule ID: " rule-id "\n"
@@ -319,21 +342,16 @@ Optional \\[universal-argument] read LANG name."
                         msg2))
                (suggestions (split-string suggest "; "))
                (len (langtool--point-length msg2)))
-          (setq messages (cons
-                          (list line column len suggestions message)
-                          messages))))
+          (setq n-tuple (cons
+                          (list line column len suggestions msg1 message)
+                          n-tuple))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
         (with-current-buffer buffer
           (mapc
-           (lambda (msg)
-             (let ((line (nth 0 msg))
-                   (col (nth 1 msg))
-                   (len (nth 2 msg))
-                   (sugs (nth 3 msg))
-                   (message (nth 4 msg)))
-               (langtool-create-overlay line col len sugs message)))
-           messages))))))
+           (lambda (tuple)
+             (langtool-create-overlay tuple))
+           n-tuple))))))
 
 (defun langtool--point-length (message)
   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
@@ -345,9 +363,14 @@ Optional \\[universal-argument] read LANG name."
       (when (buffer-live-p source)
         (with-current-buffer source
           (setq langtool-buffer-process nil))))
-    (unless (= (process-exit-status proc) 0)
+    (cond
+     ((= (process-exit-status proc) 0)
+      (message "%s"
+               (substitute-command-keys 
+                "Type \\[langtool-correct-buffer] to correct buffer.")))
+     (t
       (message "LanguageTool finished with code %d" 
-               (process-exit-status proc)))
+               (process-exit-status proc))))
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
@@ -363,23 +386,104 @@ Optional \\[universal-argument] read LANG name."
                      (file-name-nondirectory f)))
                  (directory-files dir t "^[^.].$")))))))
 
-;;TODO
+;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
+;;TODO investigate elisp coding-system -> java coding-system
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs)))
     (cond
      ((string-match "utf-8" csname)
-      "utf-8")
-     ((string-match "euc.*jp" csname)
-      "euc-jp")
+      "utf8")
+     ((or (string-match "euc.*jp" csname)
+          (string-match "japanese-iso-.*8bit" csname))
+      "eucjp")
      ((string-match "shift.jis" csname)
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
+     ((string-match "iso-8859-\\([0-9]+\\)" csname)
+      (concat "ISO8859_" (match-string 1 csname)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      (t
       csname))))
+
+(defun langtool--correction (overlays)
+  (let ((conf (current-window-configuration)))
+    (unwind-protect
+        (loop for ov in overlays
+              do (langtool--correction-loop ov))
+      (set-window-configuration conf)
+      (kill-buffer (langtool--correction-buffer)))))
+
+(defun langtool--correction-loop (ov)
+  (let* ((suggests (overlay-get ov 'langtool-suggestions))
+         (msg (overlay-get ov 'langtool-simple-message))
+         (alist (langtool--correction-popup msg suggests)))
+    (while (progn
+             (goto-char (overlay-start ov))
+             (let (message-log-max)
+               (message (concat "SPC to leave unchanged, Digit to replace word")))
+             (let* ((echo-keystrokes)
+                    (c (read-char))
+                    (pair (assq c alist)))
+               ;;TODO add ignore rule
+               ;; for future session. only current session.
+               (cond
+                (pair
+                 (let ((sug (nth 1 pair)))
+                   (delete-region (overlay-start ov) (overlay-end ov))
+                   (insert sug)
+                   (delete-overlay ov))
+                 nil)
+                ((memq c '(?\q)) 
+                 (keyboard-quit))
+                ((memq c '(?\ )) nil)
+                (t (ding) t)))))))
+
+;;TODO suggests less than 10?
+(defvar langtool--correction-keys
+  [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
+
+;; todo display message C-h ?
+(defun langtool--correction-popup (msg suggests)
+  (let ((buf (langtool--correction-buffer)))
+    (delete-other-windows)
+    (let ((win (split-window)))
+      (set-window-buffer win buf))
+    (with-current-buffer buf
+      (langtool-whitespace-mode)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert msg "\n\n")
+        (loop for s in suggests
+              for c across langtool--correction-keys
+              do (insert (format "(%c) %s\n" c s))
+              collect (list c s))))))
+
+(defun langtool--correction-buffer ()
+  (get-buffer-create "*Langtool Correction*"))
+
+(defun langtool-whitespace-mode ()
+  (whitespace-mode -1)
+  (mapatoms
+   (lambda (s)
+     (and (string-match "^whitespace-" (symbol-name s))
+          (boundp s)
+          (null (get s 'face))
+          (let ((v (get s 'standard-value)))
+            (cond
+             ((null v))
+             (t
+              (set (make-variable-buffer-local s)
+                   (if (eq (car v) 'quote)
+                       (cadr v)
+                     (car v))))))))
+   obarray)
+  ;; showing only trailing whitespaces
+  (setq whitespace-style '(face trailing))
+  ;; re-activate
+  (whitespace-mode 1))
 
 ;; initialize mother tongue
 (unless langtool-mother-tongue
