@@ -37,8 +37,6 @@
 ;;     (global-set-key "\C-x4w" 'langtool-check-buffer)
 ;;     (global-set-key "\C-x4W" 'langtool-check-done)
 ;;     (global-set-key "\C-x4l" 'langtool-switch-default-language)
-;;     (global-set-key "\C-x4n" 'langtool-goto-next-error)
-;;     (global-set-key "\C-x4p" 'langtool-goto-previous-error)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ;;
@@ -135,7 +133,8 @@ String that separated by comma or list of string.
   '(langtool-buffer-process " LanguageTool running..."))
 
 (defun langtool-goto-next-error ()
-  "Goto next error."
+  "Obsoleted function. Should use `langtool-correct-buffer'.
+Goto next error."
   (interactive)
   (let ((overlays (langtool-overlays-region (point) (point-max))))
     (langtool-goto-error 
@@ -143,7 +142,8 @@ String that separated by comma or list of string.
      (lambda (ov) (< (point) (overlay-start ov))))))
 
 (defun langtool-goto-previous-error ()
-  "Goto previous error."
+  "Obsoleted function. Should use `langtool-correct-buffer'.
+Goto previous error."
   (interactive)
   (let ((overlays (langtool-overlays-region (point-min) (point))))
     (langtool-goto-error 
@@ -423,12 +423,12 @@ Optional \\[universal-argument] read LANG name."
     (while (progn
              (goto-char (overlay-start ov))
              (let (message-log-max)
-               (message (concat "SPC to leave unchanged, Digit to replace word")))
+               (message (concat "SPC to leave unchanged, "
+                                "Digit to replace word, "
+                                "`q' to quit")))
              (let* ((echo-keystrokes)
                     (c (read-char))
                     (pair (assq c alist)))
-               ;;TODO add ignore rule
-               ;; for future session. only current session.
                (cond
                 (pair
                  (let ((sug (nth 1 pair)))
@@ -441,11 +441,13 @@ Optional \\[universal-argument] read LANG name."
                 ((memq c '(?\ )) nil)
                 (t (ding) t)))))))
 
-;;TODO suggests less than 10?
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
 
 ;; todo display message C-h ?
+;; todo `recursive-edit'
+;;TODO add ignore rule
+;; for future session? only current session?
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
@@ -466,11 +468,12 @@ Optional \\[universal-argument] read LANG name."
 
 (defun langtool-whitespace-mode ()
   (whitespace-mode -1)
+  ;; clone `whitespace-mode' local variables
   (mapatoms
    (lambda (s)
      (and (string-match "^whitespace-" (symbol-name s))
           (boundp s)
-          (null (get s 'face))
+          (null (get s 'face))          ; not a face variable
           (let ((v (get s 'standard-value)))
             (cond
              ((null v))
