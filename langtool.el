@@ -348,19 +348,23 @@ Optional \\[universal-argument] read LANG name."
                      (file-name-nondirectory f)))
                  (directory-files dir t "^[^.].$")))))))
 
-;;TODO
+;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
+;; TODO investigate elisp coding-system -> java coding-system
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs)))
     (cond
      ((string-match "utf-8" csname)
-      "utf-8")
-     ((string-match "euc.*jp" csname)
-      "euc-jp")
+      "utf8")
+     ((or (string-match "euc.*jp" csname)
+          (string-match "japanese-iso-.*8bit" csname))
+      "eucjp")
      ((string-match "shift.jis" csname)
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
+     ((string-match "iso-8859-\\([0-9]+\\)" csname)
+      (concat "ISO8859_" (match-string 1 csname)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      (t
