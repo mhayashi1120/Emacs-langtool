@@ -4,7 +4,7 @@
 ;; Keywords: grammer checker java
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.0.2
+;; Version: 1.0.3
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -352,7 +352,9 @@ Optional \\[universal-argument] read LANG name."
 ;; TODO investigate elisp coding-system -> java coding-system
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
-         (csname (symbol-name cs)))
+         (csname (symbol-name cs))
+         (aliases (coding-system-aliases cs))
+         tmp)
     (cond
      ((string-match "utf-8" csname)
       "utf8")
@@ -363,8 +365,11 @@ Optional \\[universal-argument] read LANG name."
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
-     ((string-match "iso-8859-\\([0-9]+\\)" csname)
-      (concat "ISO8859_" (match-string 1 csname)))
+     ((setq tmp 
+            (find-if (lambda (x) 
+                       (string-match "iso-8859-\\([0-9]+\\)" x))
+                     (mapcar 'symbol-name aliases)))
+      (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      (t
