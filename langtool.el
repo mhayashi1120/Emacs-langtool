@@ -68,7 +68,7 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * support suggestion.
+;; * what happens when change `tab-width'
 
 ;;; Code:
 
@@ -251,25 +251,21 @@ Optional \\[universal-argument] read LANG name."
         (message (nth 5 tuple)))
     (save-excursion
       (goto-char (point-min))
-      (condition-case nil
-          (progn
-            (forward-line (1- line))
-            (let ((start (line-beginning-position))
-                  (end (line-end-position)))
-              (move-to-column col)
-              ;;FIXME LanguageTool column sometimes wrong!
-              ;; restrict to current line
-              (setq start (min end (max start (point))))
-              (move-to-column (+ col len))
-              (setq end (min end (point)))
-              (let ((ov (make-overlay start end)))
-                (overlay-put ov 'langtool-simple-message msg)
-                (overlay-put ov 'langtool-message message)
-                (overlay-put ov 'langtool-suggestions sugs)
-                (overlay-put ov 'priority 1)
-                (overlay-put ov 'face 'flymake-errline))))
-        ;;TODO ignore?
-        (end-of-buffer nil)))))
+      (forward-line (1- line))
+      (let ((start (line-beginning-position))
+            (end (line-end-position)))
+        (move-to-column col)
+        ;;FIXME LanguageTool column sometimes wrong!
+        ;; restrict to current line
+        (setq start (min end (max start (point))))
+        (move-to-column (+ col len))
+        (setq end (min end (point)))
+        (let ((ov (make-overlay start end)))
+          (overlay-put ov 'langtool-simple-message msg)
+          (overlay-put ov 'langtool-message message)
+          (overlay-put ov 'langtool-suggestions sugs)
+          (overlay-put ov 'priority 1)
+          (overlay-put ov 'face 'flymake-errline))))))
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 (defun langtool-current-error-messages ()
@@ -390,7 +386,9 @@ Optional \\[universal-argument] read LANG name."
 ;;TODO investigate elisp coding-system -> java coding-system
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
-         (csname (symbol-name cs)))
+         (csname (symbol-name cs))
+         (aliases (langtool-coding-system-aliases cs))
+         tmp)
     (cond
      ((string-match "utf-8" csname)
       "utf8")
@@ -401,12 +399,21 @@ Optional \\[universal-argument] read LANG name."
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
-     ((string-match "iso-8859-\\([0-9]+\\)" csname)
-      (concat "ISO8859_" (match-string 1 csname)))
+     ((setq tmp 
+            (find-if (lambda (x) 
+                       (string-match "iso-8859-\\([0-9]+\\)" x))
+                     (mapcar 'symbol-name aliases)))
+      (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      (t
       csname))))
+
+(defun langtool-coding-system-aliases (coding-system)
+  (if (fboundp 'coding-system-aliases)
+      ;; deceive elint
+      (funcall 'coding-system-aliases coding-system)
+    (coding-system-get coding-system 'alias-coding-systems)))
 
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
@@ -444,8 +451,14 @@ Optional \\[universal-argument] read LANG name."
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
 
+(defface langtool-correction-face
+  '((((class mono)) (:inverse-video t :bold t :underline t))
+    (t (:background "red1" :foreground "yellow" :bold t)))
+  "Face used to visualize correction."
+  :group 'langtool)
+
+
 ;; todo display message C-h ?
-;; todo `recursive-edit'
 ;;TODO add ignore rule
 ;; for future session? only current session?
 (defun langtool--correction-popup (msg suggests)
@@ -454,39 +467,24 @@ Optional \\[universal-argument] read LANG name."
     (let ((win (split-window)))
       (set-window-buffer win buf))
     (with-current-buffer buf
-      (langtool-whitespace-mode)
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert msg "\n\n")
         (loop for s in suggests
               for c across langtool--correction-keys
-              do (insert (format "(%c) %s\n" c s))
+              do (progn 
+                   (insert "(" c ") ")
+                   (let ((start (point)))
+                     (insert s)
+                     ;; colorize suggestion.
+                     ;; suggestion may contains whitespace.
+                     (let ((ov (make-overlay start (point))))
+                       (overlay-put ov 'face 'langtool-correction-face)))
+                   (insert "\n"))
               collect (list c s))))))
 
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
-
-(defun langtool-whitespace-mode ()
-  (whitespace-mode -1)
-  ;; clone `whitespace-mode' local variables
-  (mapatoms
-   (lambda (s)
-     (and (string-match "^whitespace-" (symbol-name s))
-          (boundp s)
-          (null (get s 'face))          ; not a face variable
-          (let ((v (get s 'standard-value)))
-            (cond
-             ((null v))
-             (t
-              (set (make-variable-buffer-local s)
-                   (if (eq (car v) 'quote)
-                       (cadr v)
-                     (car v))))))))
-   obarray)
-  ;; showing only trailing whitespaces
-  (setq whitespace-style '(face trailing))
-  ;; re-activate
-  (whitespace-mode 1))
 
 ;; initialize mother tongue
 (unless langtool-mother-tongue
@@ -496,7 +494,7 @@ Optional \\[universal-argument] read LANG name."
               lang)
           (and env
                (string-match "^\\(..\\)_" env)
-               (setq lang (match-string 1 env))
+               (setq lang (downcase (match-string 1 env)))
                (member lang (langtool-available-languages))
                lang))))
 
