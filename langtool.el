@@ -69,6 +69,7 @@
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * what happens when change `tab-width'
+;; * java coding <-> elisp coding
 
 ;;; Code:
 
@@ -95,7 +96,7 @@
   :group 'langtool
   :type 'file)
 
-(defcustom langtool-default-language "en"
+(defcustom langtool-default-language nil
   "*Language name pass to LanguageTool."
   :group 'langtool
   :type 'string)
@@ -121,7 +122,7 @@ String that separated by comma or list of string.
   (concat
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
-   "Suggestion: \\(.*\\)\n"
+   "\\(?:Suggestion: \\(.*\\)\n\\)?"
    "\\(\\(?:.*\\)\n\\(?:.*\\)\\)\n"
     "\n?"                               ; last result have no new-line
    ))
@@ -169,7 +170,7 @@ Goto previous error."
             (setq unread-command-events (list event))))))))
 
 (defun langtool-check-done ()
-  "Finish LanguageTool process and cleanup existing overlays."
+  "Finish LanguageTool process and cleanup existing colorized texts."
   (interactive)
   (when langtool-buffer-process
     (delete-process langtool-buffer-process))
@@ -178,7 +179,10 @@ Goto previous error."
 
 (defun langtool-check-buffer (&optional lang)
   "Check context current buffer and light up errors.
-Optional \\[universal-argument] read LANG name."
+Optional \\[universal-argument] read LANG name.
+
+You can change the `langtool-default-language' to apply all session.
+"
   (interactive
    (when current-prefix-arg
      (list (langtool-read-lang-name))))
@@ -336,7 +340,7 @@ Optional \\[universal-argument] read LANG name."
                 (concat "Rule ID: " rule-id "\n"
                         msg1 "\n\n" 
                         msg2))
-               (suggestions (split-string suggest "; "))
+               (suggestions (and suggest (split-string suggest "; ")))
                (len (langtool--point-length msg2)))
           (setq n-tuple (cons
                           (list line column len suggestions msg1 message)
@@ -361,6 +365,7 @@ Optional \\[universal-argument] read LANG name."
           (setq langtool-buffer-process nil))))
     (cond
      ((= (process-exit-status proc) 0)
+      ;;TODO message is wrong when no error is found.
       (message "%s"
                (substitute-command-keys 
                 "Type \\[langtool-correct-buffer] to correct buffer.")))
@@ -383,7 +388,6 @@ Optional \\[universal-argument] read LANG name."
                  (directory-files dir t "^[^.].$")))))))
 
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
-;;TODO investigate elisp coding-system -> java coding-system
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs))
@@ -457,10 +461,10 @@ Optional \\[universal-argument] read LANG name."
   "Face used to visualize correction."
   :group 'langtool)
 
-
 ;; todo display message C-h ?
-;;TODO add ignore rule
-;; for future session? only current session?
+;; TODO add ignore rule
+;;   for future session? only current session?
+;; todo move to backward
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
@@ -486,17 +490,19 @@ Optional \\[universal-argument] read LANG name."
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
 
-;; initialize mother tongue
-(unless langtool-mother-tongue
-  (setq langtool-mother-tongue
-        (let ((env (or (getenv "LANG")
-                       (getenv "LC_ALL")))
-              lang)
-          (and env
-               (string-match "^\\(..\\)_" env)
-               (setq lang (downcase (match-string 1 env)))
-               (member lang (langtool-available-languages))
-               lang))))
+;; initialize custom variables guessed from environment.
+(let ((env (or (getenv "LANG")
+               (getenv "LC_ALL")))
+      lang mt)
+  (and env
+       (string-match "^\\(..\\)_" env)
+       (setq lang (downcase (match-string 1 env)))
+       (member lang (langtool-available-languages))
+       (setq mt lang))
+  (unless langtool-mother-tongue
+    (setq langtool-mother-tongue mt))
+  (unless langtool-default-language
+    (setq langtool-default-language (or mt "en"))))
 
 (provide 'langtool)
 
