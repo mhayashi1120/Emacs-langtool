@@ -115,6 +115,8 @@ String that separated by comma or list of string.
           (list string)
           string))
 
+(defvar langtool-inner-disabled-rules nil)
+
 (defvar langtool-temp-file nil)
 (make-variable-buffer-local 'langtool-temp-file)
 
@@ -252,7 +254,8 @@ You can change the `langtool-default-language' to apply all session.
         (len (nth 2 tuple))
         (sugs (nth 3 tuple))
         (msg (nth 4 tuple))
-        (message (nth 5 tuple)))
+        (message (nth 5 tuple))
+        (rule-id (nth 6 tuple)))
     (save-excursion
       (goto-char (point-min))
       (forward-line (1- line))
@@ -268,6 +271,7 @@ You can change the `langtool-default-language' to apply all session.
           (overlay-put ov 'langtool-simple-message msg)
           (overlay-put ov 'langtool-message message)
           (overlay-put ov 'langtool-suggestions sugs)
+          (overlay-put ov 'langtool-rule-id rule-id)
           (overlay-put ov 'priority 1)
           (overlay-put ov 'face 'flymake-errline))))))
 
@@ -308,13 +312,19 @@ You can change the `langtool-default-language' to apply all session.
     (error "Another process is running")))
 
 (defun langtool-disabled-rules ()
-  (cond
-   ((stringp langtool-disabled-rules)
-    langtool-disabled-rules)
-   ((consp langtool-disabled-rules)
-    (mapconcat 'identity langtool-disabled-rules ","))
-   (t
-    "")))
+  (let ((custom langtool-disabled-rules)
+        (inner langtool-inner-disabled-rules))
+    (cond
+     ((stringp custom)
+      (mapconcat 'identity 
+                 (cons custom inner)
+                 ","))
+     ((consp custom)
+      (mapconcat 'identity 
+                 (append custom inner)
+                 ","))
+     (t
+      ""))))
 
 (defun langtool-process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
@@ -343,7 +353,7 @@ You can change the `langtool-default-language' to apply all session.
                (suggestions (and suggest (split-string suggest "; ")))
                (len (langtool--point-length msg2)))
           (setq n-tuple (cons
-                          (list line column len suggestions msg1 message)
+                          (list line column len suggestions msg1 message rule-id)
                           n-tuple))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
@@ -363,15 +373,17 @@ You can change the `langtool-default-language' to apply all session.
       (when (buffer-live-p source)
         (with-current-buffer source
           (setq langtool-buffer-process nil))))
-    (cond
-     ((= (process-exit-status proc) 0)
-      ;;TODO message is wrong when no error is found.
-      (message "%s"
-               (substitute-command-keys 
-                "Type \\[langtool-correct-buffer] to correct buffer.")))
-     (t
-      (message "LanguageTool finished with code %d" 
-               (process-exit-status proc))))
+    (let ((code (process-exit-status proc)))
+      (cond
+       ((/= code 0)
+        (message "LanguageTool finished with code %d" 
+                 code))
+       ((langtool-overlays-region (point-min) (point-max))
+        (message "%s"
+                 (substitute-command-keys 
+                  "Type \\[langtool-correct-buffer] to correct buffer.")))
+       (t
+        (message "LanguageTool successfully finished with no error."))))
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
@@ -434,10 +446,10 @@ You can change the `langtool-default-language' to apply all session.
     (while (progn
              (goto-char (overlay-start ov))
              (let (message-log-max)
-               (message (concat "SPC to leave unchanged, "
-                                "Digit to replace word, "
-                                "`q' to quit")))
-             (let* ((echo-keystrokes)
+               (message (concat "C-h or ? for more options; "
+                                "SPC to leave unchanged, "
+                                "Digit to replace word")))
+             (let* ((echo-keystrokes)   ; suppress echoing
                     (c (read-char))
                     (pair (assq c alist)))
                (cond
@@ -447,8 +459,27 @@ You can change the `langtool-default-language' to apply all session.
                    (insert sug)
                    (delete-overlay ov))
                  nil)
-                ((memq c '(?\q)) 
+                ((memq c '(?q)) 
                  (keyboard-quit))
+                ((memq c '(?c)) 
+                 (delete-overlay ov))
+                ((memq c '(?e))
+                 (message (substitute-command-keys
+                           "Type \\[exit-recursive-edit] to finish the edit."))
+                 (recursive-edit))
+                ((memq c '(?i))
+                 (let ((rule (overlay-get ov 'langtool-rule-id)))
+                   (unless (member rule langtool-inner-disabled-rules)
+                     (setq langtool-inner-disabled-rules
+                           (cons rule langtool-inner-disabled-rules)))
+                   ;;TODO clear same rule overlays
+                   (delete-overlay ov)))
+                ((memq c '(?\C-h ?\?))
+                 ;;TODO popup help message
+                 )
+                ((memq c '(\d))
+                 ;;TODO backward error.
+                 )
                 ((memq c '(?\ )) nil)
                 (t (ding) t)))))))
 
@@ -461,10 +492,6 @@ You can change the `langtool-default-language' to apply all session.
   "Face used to visualize correction."
   :group 'langtool)
 
-;; todo display message C-h ?
-;; TODO add ignore rule
-;;   for future session? only current session?
-;; todo move to backward
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
