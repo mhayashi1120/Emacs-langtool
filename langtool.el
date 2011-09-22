@@ -70,6 +70,7 @@
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * what happens when change `tab-width'
 ;; * java coding <-> elisp coding
+;; * generate command line only for debugging.
 
 ;;; Code:
 
@@ -385,26 +386,26 @@ You can change the `langtool-default-language' to apply all session.
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
-          face)
+          marks msg face)
+      (when (/= code 0)
+        (setq face compilation-error-face))
+      (when (buffer-live-p source)
+        (with-current-buffer source
+          (setq marks (langtool-overlays-region (point-min) (point-max)))
+          (setq face (if marks compilation-info-face compilation-warning-face))
+          (setq langtool-buffer-process nil)
+          (setq langtool-mode-line-message 
+                (list " LanguageTool" 
+                      (propertize ":exit" 'face face)))))
       (cond
        ((/= code 0)
-        (setq face compilation-error-face)
-        (message "LanguageTool finished with code %d" 
-                 code))
-       ((langtool-overlays-region (point-min) (point-max))
-        (setq face compilation-warning-face)
+        (message "LanguageTool finished with code %d" code))
+       (marks
         (message "%s"
                  (substitute-command-keys 
                   "Type \\[langtool-correct-buffer] to correct buffer.")))
        (t
-        (setq face compilation-info-face)
-        (message "LanguageTool successfully finished with no error.")))
-      (when (buffer-live-p source)
-        (with-current-buffer source
-          (setq langtool-buffer-process nil)
-          (setq langtool-mode-line-message 
-              (list " LanguageTool" 
-                    (propertize ":exit" 'face face))))))
+        (message "LanguageTool successfully finished with no error."))))
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
@@ -506,7 +507,7 @@ You can change the `langtool-default-language' to apply all session.
                    t)
                   ((memq c '(?\d))
                    (throw 'next (cadr (memq ov (reverse overlays)))))
-                  ((memq c '(?\ )) nil)
+                  ((memq c '(?\s)) nil)
                   (t (ding) t)))))
       ;; next item
       (cadr (memq ov overlays)))))
