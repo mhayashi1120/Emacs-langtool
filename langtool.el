@@ -77,6 +77,7 @@
   (require 'cl))
 
 (require 'flymake)
+(require 'compile)
 
 (defgroup langtool nil
   "Customize langtool"
@@ -135,10 +136,7 @@ String that separated by comma or list of string.
 
 (defvar langtool-mode-line-message nil)
 (make-variable-buffer-local 'langtool-mode-line-message)
-
-(defvar langtool-mode-line-process-status nil)
-(make-variable-buffer-local 'langtool-mode-line-process-status)
-(put 'langtool-mode-line-process-status 'risky-local-variable t)
+(put 'langtool-mode-line-message 'risky-local-variable t)
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
@@ -183,7 +181,6 @@ Goto previous error."
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
-  (kill-local-variable 'langtool-mode-line-process-status)
   (langtool-clear-buffer-overlays)
   (message "Cleaned up LanguageTool."))
 
@@ -197,9 +194,11 @@ You can change the `langtool-default-language' to apply all session.
    (when current-prefix-arg
      (list (langtool-read-lang-name))))
   (langtool-check-command)
-  (add-to-list 
-   'mode-line-process
-   '(t langtool-mode-line-message))
+  ;; probablly ok...
+  (when (listp mode-line-process)
+    (add-to-list 
+     'mode-line-process
+     '(t langtool-mode-line-message)))
   (let ((file (buffer-file-name)))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
@@ -225,10 +224,9 @@ You can change the `langtool-default-language' to apply all session.
         (set-process-sentinel proc 'langtool-process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
         (setq langtool-buffer-process proc)
-        (setq langtool-mode-line-process-status
-              (propertize ":run" 'face compilation-info-face))
         (setq langtool-mode-line-message 
-              (list " LanguageTool" 'langtool-mode-line-process-status))))))
+              (list " LanguageTool" 
+                    (propertize ":run" 'face compilation-info-face)))))))
 
 (defun langtool-switch-default-language (lang)
   "Switch `langtool-read-lang-name' to LANG"
@@ -243,7 +241,9 @@ You can change the `langtool-default-language' to apply all session.
     (if (null ovs)
         (message "No error found. %s" 
                  (substitute-command-keys 
-                  "Or type \\[langtool-check-buffer] to re-check buffer"))
+                  (concat
+                   "Type \\[langtool-check-done] to finish check " 
+                   "or type \\[langtool-check-buffer] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
 
@@ -402,8 +402,9 @@ You can change the `langtool-default-language' to apply all session.
       (when (buffer-live-p source)
         (with-current-buffer source
           (setq langtool-buffer-process nil)
-          (setq langtool-mode-line-process-status
-                (propertize ":exit" 'face face)))))
+          (setq langtool-mode-line-message 
+              (list " LanguageTool" 
+                    (propertize ":exit" 'face face))))))
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
@@ -454,58 +455,61 @@ You can change the `langtool-default-language' to apply all session.
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
     (unwind-protect
-        (loop for ov in overlays
-              do (langtool--correction-loop ov))
+        (let ((next (car overlays)))
+          ;; TODO remove deleted overlay
+          (while (setq next (langtool--correction-loop next overlays))))
       (set-window-configuration conf)
       (kill-buffer (langtool--correction-buffer)))))
 
-(defun langtool--correction-loop (ov)
+(defun langtool--correction-loop (ov overlays)
   (let* ((suggests (overlay-get ov 'langtool-suggestions))
          (msg (overlay-get ov 'langtool-simple-message))
          (alist (langtool--correction-popup msg suggests)))
-    (while (progn
-             (goto-char (overlay-start ov))
-             (let (message-log-max)
-               (message (concat "C-h or ? for more options; "
-                                "SPC to leave unchanged, "
-                                "Digit to replace word")))
-             (let* ((echo-keystrokes)   ; suppress echoing
-                    (c (downcase (read-char)))
-                    (pair (assq c alist)))
-               (cond
-                (pair
-                 (let ((sug (nth 1 pair)))
-                   (delete-region (overlay-start ov) (overlay-end ov))
-                   (insert sug)
-                   (delete-overlay ov))
-                 nil)
-                ((memq c '(?q)) 
-                 (keyboard-quit))
-                ((memq c '(?c)) 
-                 (delete-overlay ov)
-                 nil)
-                ((memq c '(?e))
-                 (message (substitute-command-keys
-                           "Type \\[exit-recursive-edit] to finish the edit."))
-                 (recursive-edit)
-                 ;;TODO what should i do? clear overlay? stay cursor?
-                 )
-                ((memq c '(?i))
-                 (let ((rule (overlay-get ov 'langtool-rule-id)))
-                   (unless (member rule langtool-local-disabled-rules)
-                     (setq langtool-local-disabled-rules
-                           (cons rule langtool-local-disabled-rules)))
-                   ;;TODO clear same rule overlays
-                   (delete-overlay ov))
-                 nil)
-                ((memq c '(?\C-h ?\?))
-                 (langtool--correction-help)
-                 t)
-                ((memq c '(\d))
-                 ;;TODO backward error.
-                 )
-                ((memq c '(?\ )) nil)
-                (t (ding) t)))))))
+    (catch 'next
+      (while (progn
+               (goto-char (overlay-start ov))
+               (let (message-log-max)
+                 (message (concat "C-h or ? for more options; "
+                                  "SPC to leave unchanged, "
+                                  "Digit to replace word")))
+               (let* ((echo-keystrokes) ; suppress echoing
+                      (c (downcase (read-char)))
+                      (pair (assq c alist)))
+                 (cond
+                  (pair
+                   (let ((sug (nth 1 pair)))
+                     (delete-region (overlay-start ov) (overlay-end ov))
+                     (insert sug)
+                     (delete-overlay ov))
+                   nil)
+                  ((memq c '(?q)) 
+                   (keyboard-quit))
+                  ((memq c '(?c)) 
+                   (delete-overlay ov)
+                   nil)
+                  ((memq c '(?e))
+                   (message (substitute-command-keys
+                             "Type \\[exit-recursive-edit] to finish the edit."))
+                   (recursive-edit)
+                   ;;TODO what should i do? clear overlay? stay cursor?
+                   )
+                  ((memq c '(?i))
+                   (let ((rule (overlay-get ov 'langtool-rule-id)))
+                     (unless (member rule langtool-local-disabled-rules)
+                       (setq langtool-local-disabled-rules
+                             (cons rule langtool-local-disabled-rules)))
+                     ;;TODO clear same rule overlays
+                     (delete-overlay ov))
+                   nil)
+                  ((memq c '(?\C-h ?\?))
+                   (langtool--correction-help)
+                   t)
+                  ((memq c '(?\d))
+                   (throw 'next (cadr (memq ov (reverse overlays)))))
+                  ((memq c '(?\ )) nil)
+                  (t (ding) t)))))
+      ;; next item
+      (cadr (memq ov overlays)))))
 
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
