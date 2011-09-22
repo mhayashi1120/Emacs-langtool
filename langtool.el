@@ -128,7 +128,9 @@ String that separated by comma or list of string.
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
    "\\(?:Suggestion: \\(.*\\)\n\\)?"
-   "\\(\\(?:.*\\)\n\\(?:.*\\)\\)\n"
+   ;; As long as i can see
+   ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
+   "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
     "\n?"                               ; last result have no new-line
    ))
 
@@ -366,7 +368,7 @@ You can change the `langtool-default-language' to apply all session.
                         msg1 "\n\n" 
                         msg2))
                (suggestions (and suggest (split-string suggest "; ")))
-               (len (langtool--point-length msg2)))
+               (len (langtool--pointed-length msg2)))
           (setq n-tuple (cons
                           (list line column len suggestions msg1 message rule-id)
                           n-tuple))))
@@ -378,9 +380,12 @@ You can change the `langtool-default-language' to apply all session.
              (langtool-create-overlay tuple))
            n-tuple))))))
 
-(defun langtool--point-length (message)
-  (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
-       (length (match-string 2 message))))
+(defun langtool--pointed-length (message)
+  (or
+   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
+        (length (match-string 2 message)))
+   ;; never through here, but return nil from this function, stop everything.
+   1))
 
 (defun langtool-process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
@@ -511,6 +516,20 @@ You can change the `langtool-default-language' to apply all session.
                   (t (ding) t)))))
       ;; next item
       (cadr (memq ov overlays)))))
+
+;;TODO check
+(defun langtool--delete-overlays (rule-id overlays)
+  (loop for ov in overlays
+        unless (let* ((r (overlay-get ov 'langtool-rule-id))
+                      (pred (equal r rule-id)))
+                 (when pred
+                   (langtool--delete-overlay ov overlays))
+                 pred)
+        collect ov))
+
+(defun langtool--delete-overlay (ov overlays)
+  (delete-overlay ov)
+  (remq ov overlays))
 
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
