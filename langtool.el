@@ -1,7 +1,7 @@
 ;;; langtool.el --- Grammer check utility using LanguageTool
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
-;; Keywords: grammer checker java
+;; Keywords: grammer checker
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
 ;; Version: 1.1.0
@@ -128,7 +128,7 @@ String that separated by comma or list of string.
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
    "\\(?:Suggestion: \\(.*\\)\n\\)?"
-   ;; As long as i can see
+   ;; As long as i can read
    ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
    "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
     "\n?"                               ; last result have no new-line
@@ -184,6 +184,7 @@ Goto previous error."
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
+  (kill-local-variable 'langtool-local-disabled-rules)
   (langtool-clear-buffer-overlays)
   (message "Cleaned up LanguageTool."))
 
@@ -336,12 +337,10 @@ You can change the `langtool-default-language' to apply all session.
       (mapconcat 'identity 
                  (cons custom inner)
                  ","))
-     ((consp custom)
+     (t
       (mapconcat 'identity 
                  (append custom inner)
-                 ","))
-     (t
-      ""))))
+                 ",")))))
 
 (defun langtool-process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
@@ -462,8 +461,8 @@ You can change the `langtool-default-language' to apply all session.
   (let ((conf (current-window-configuration)))
     (unwind-protect
         (let ((next (car overlays)))
-          ;; TODO remove deleted overlay
           (while (setq next (langtool--correction-loop next overlays))))
+      (langtool--expire-buffer-overlays)
       (set-window-configuration conf)
       (kill-buffer (langtool--correction-buffer)))))
 
@@ -486,50 +485,61 @@ You can change the `langtool-default-language' to apply all session.
                    (let ((sug (nth 1 pair)))
                      (delete-region (overlay-start ov) (overlay-end ov))
                      (insert sug)
-                     (delete-overlay ov))
+                     (langtool--erase-overlay ov))
                    nil)
                   ((memq c '(?q)) 
                    (keyboard-quit))
                   ((memq c '(?c)) 
-                   (delete-overlay ov)
+                   (langtool--erase-overlay ov)
                    nil)
                   ((memq c '(?e))
                    (message (substitute-command-keys
                              "Type \\[exit-recursive-edit] to finish the edit."))
                    (recursive-edit)
-                   ;;TODO what should i do? clear overlay? stay cursor?
-                   )
+                   ;; stay current cursor and wait next user command.
+                   (throw 'next ov))
                   ((memq c '(?i))
                    (let ((rule (overlay-get ov 'langtool-rule-id)))
                      (unless (member rule langtool-local-disabled-rules)
                        (setq langtool-local-disabled-rules
                              (cons rule langtool-local-disabled-rules)))
-                     ;;TODO clear same rule overlays
-                     (delete-overlay ov))
+                     (langtool--ignore-rule rule overlays))
                    nil)
                   ((memq c '(?\C-h ?\?))
                    (langtool--correction-help)
                    t)
                   ((memq c '(?\d))
-                   (throw 'next (cadr (memq ov (reverse overlays)))))
+                   (throw 'next (langtool--prev-overlay ov overlays)))
                   ((memq c '(?\s)) nil)
                   (t (ding) t)))))
       ;; next item
-      (cadr (memq ov overlays)))))
+      (langtool--next-overlay ov overlays))))
 
-;;TODO check
-(defun langtool--delete-overlays (rule-id overlays)
+(defun langtool--expire-buffer-overlays ()
+  (mapc
+   (lambda (o)
+     (unless (overlay-get o 'face)
+       (delete-overlay o)))
+   (langtool-overlays-region (point-min) (point-max))))
+
+(defun langtool--ignore-rule (rule overlays)
   (loop for ov in overlays
-        unless (let* ((r (overlay-get ov 'langtool-rule-id))
-                      (pred (equal r rule-id)))
-                 (when pred
-                   (langtool--delete-overlay ov overlays))
-                 pred)
-        collect ov))
+        do (let ((r (overlay-get ov 'langtool-rule-id)))
+             (when (equal r rule)
+               (langtool--erase-overlay ov)))))
 
-(defun langtool--delete-overlay (ov overlays)
-  (delete-overlay ov)
-  (remq ov overlays))
+(defun langtool--erase-overlay (ov)
+  (overlay-put ov 'face nil))
+
+(defun langtool--next-overlay (current overlays)
+  (loop for o in (cdr (memq current overlays))
+        if (overlay-get o 'face)
+        return o))
+
+(defun langtool--prev-overlay (current overlays)
+  (loop for o in (cdr (memq current (reverse overlays)))
+        if (overlay-get o 'face)
+        return o))
 
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
@@ -564,7 +574,7 @@ You can change the `langtool-default-language' to apply all session.
 
 (defun langtool--correction-help ()
   (let ((help-1 "[q/Q]uit correction; [c/C]lear the colorized text; ")
-        (help-2 "[i/I]gnore the rule in this buffer")
+        (help-2 "[i/I]gnore the rule over current session.")
         (help-3 "[e/E]dit the buffer manually"))
     (save-window-excursion
       (unwind-protect
@@ -581,7 +591,6 @@ You can change the `langtool-default-language' to apply all session.
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
 
-;;TODO set default value?
 ;; initialize custom variables guessed from environment.
 (let ((env (or (getenv "LANG")
                (getenv "LC_ALL")))
