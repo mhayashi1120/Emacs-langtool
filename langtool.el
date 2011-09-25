@@ -65,12 +65,12 @@
 ;;  M-x langtool-check-done
 
 ;;; TODO:
+;; * generate command line only for debugging.
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * what happens when change `tab-width'
 ;; * java coding <-> elisp coding
-;; * generate command line only for debugging.
 
 ;;; Code:
 
@@ -200,9 +200,7 @@ You can change the `langtool-default-language' to apply all session.
   (langtool-check-command)
   ;; probablly ok...
   (when (listp mode-line-process)
-    (add-to-list 
-     'mode-line-process
-     '(t langtool-mode-line-message)))
+    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   (let ((file (buffer-file-name)))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
@@ -331,15 +329,15 @@ You can change the `langtool-default-language' to apply all session.
 
 (defun langtool-disabled-rules ()
   (let ((custom langtool-disabled-rules)
-        (inner langtool-local-disabled-rules))
+        (locals langtool-local-disabled-rules))
     (cond
      ((stringp custom)
       (mapconcat 'identity 
-                 (cons custom inner)
+                 (cons custom locals)
                  ","))
      (t
       (mapconcat 'identity 
-                 (append custom inner)
+                 (append custom locals)
                  ",")))))
 
 (defun langtool-process-create-buffer ()
@@ -390,10 +388,11 @@ You can change the `langtool-default-language' to apply all session.
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
-          marks msg face)
+          dead marks msg face)
       (when (/= code 0)
         (setq face compilation-error-face))
-      (when (buffer-live-p source)
+      (cond
+       ((buffer-live-p source)
         (with-current-buffer source
           (setq marks (langtool-overlays-region (point-min) (point-max)))
           (setq face (if marks compilation-info-face compilation-warning-face))
@@ -401,7 +400,9 @@ You can change the `langtool-default-language' to apply all session.
           (setq langtool-mode-line-message 
                 (list " LanguageTool" 
                       (propertize ":exit" 'face face)))))
+       (t (setq dead t)))
       (cond
+       (dead)
        ((/= code 0)
         (message "LanguageTool finished with code %d" code))
        (marks
