@@ -66,6 +66,8 @@
 
 ;;; TODO:
 ;; * generate command line only for debugging.
+;; * process coding system (test on Windows)
+;; * independ from flymake.
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
@@ -228,7 +230,11 @@ You can change the `langtool-default-language' to apply all session.
         (setq langtool-buffer-process proc)
         (setq langtool-mode-line-message 
               (list " LanguageTool" 
-                    (propertize ":run" 'face compilation-info-face)))))))
+                    (propertize ":run" 'face compilation-info-face)))
+        ;; suppress changing buffer.
+        ;; TODO hook when change this value?
+        ;; (setq buffer-read-only t)
+        ))))
 
 (defun langtool-switch-default-language (lang)
   "Switch `langtool-read-lang-name' to LANG"
@@ -576,7 +582,9 @@ You can change the `langtool-default-language' to apply all session.
 (defun langtool--correction-help ()
   (let ((help-1 "[q/Q]uit correction; [c/C]lear the colorized text; ")
         (help-2 "[i/I]gnore the rule over current session.")
-        (help-3 "[e/E]dit the buffer manually"))
+        (help-3 "[e/E]dit the buffer manually")
+        (help-4 "SPC skip; DEL move backward;")
+        )
     (save-window-excursion
       (unwind-protect
           (let ((resize-mini-windows 'grow-only))
@@ -585,7 +593,7 @@ You can change the `langtool-default-language' to apply all session.
             (message nil)
             ;;(set-minibuffer-window (selected-window))
             (enlarge-window 2)
-            (insert (concat help-1 "\n" help-2 "\n" help-3))
+            (insert (concat help-1 "\n" help-2 "\n" help-3 "\n" help-4))
             (sit-for 5))
         (erase-buffer)))))
 
