@@ -78,7 +78,6 @@
 (eval-when-compile
   (require 'cl))
 
-(require 'flymake)
 (require 'compile)
 
 (defgroup langtool nil
@@ -303,6 +302,8 @@ You can change the `langtool-default-language' to apply all session.
             (overlay-put ov 'priority 1)
             (overlay-put ov 'face 'langtool-errline)))))))
 
+;;FIXME
+;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
 (defun langtool--fuzzy-search (context-regexp length)
   (let* ((regexp (concat ".*?" context-regexp))
          (default (cons (point) (+ (point) length))))
