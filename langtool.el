@@ -67,11 +67,10 @@
 ;;; TODO:
 ;; * generate command line only for debugging.
 ;; * process coding system (test on Windows)
-;; * independ from flymake.
+;; * independ from flymake and compile.
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * what happens when change `tab-width'
 ;; * java coding <-> elisp coding
 
 ;;; Code:
@@ -89,6 +88,13 @@
 (defvar current-prefix-arg)
 (defvar unread-command-events)
 (defvar locale-language-names)
+
+(defface langtool-errline
+  '((((class color) (background dark)) (:background "Firebrick4"))
+    (((class color) (background light)) (:background "LightPink"))
+    (t (:bold t)))
+  "Face used for marking error lines."
+  :group 'langtool)
 
 (defcustom langtool-java-bin "java"
   "*Executing java command."
@@ -277,25 +283,43 @@ You can change the `langtool-default-language' to apply all session.
         (sugs (nth 3 tuple))
         (msg (nth 4 tuple))
         (message (nth 5 tuple))
-        (rule-id (nth 6 tuple)))
+        (rule-id (nth 6 tuple))
+        (context (nth 7 tuple)))
     (save-excursion
       (goto-char (point-min))
       (forward-line (1- line))
       (let ((start (line-beginning-position))
             (end (line-end-position)))
+        ;;  1. sketchy move to column that is indicated by LanguageTool.
+        ;;  2. fuzzy match to reported sentence indicated by ^^^ like string.
         (move-to-column col)
-        ;;FIXME LanguageTool column sometimes wrong!
-        ;; restrict to current line
-        (setq start (min end (max start (point))))
-        (move-to-column (+ col len))
-        (setq end (min end (point)))
-        (let ((ov (make-overlay start end)))
-          (overlay-put ov 'langtool-simple-message msg)
-          (overlay-put ov 'langtool-message message)
-          (overlay-put ov 'langtool-suggestions sugs)
-          (overlay-put ov 'langtool-rule-id rule-id)
-          (overlay-put ov 'priority 1)
-          (overlay-put ov 'face 'flymake-errline))))))
+        (destructuring-bind (start . end)
+            (langtool--fuzzy-search context len)
+          (let ((ov (make-overlay start end)))
+            (overlay-put ov 'langtool-simple-message msg)
+            (overlay-put ov 'langtool-message message)
+            (overlay-put ov 'langtool-suggestions sugs)
+            (overlay-put ov 'langtool-rule-id rule-id)
+            (overlay-put ov 'priority 1)
+            (overlay-put ov 'face 'langtool-errline)))))))
+
+(defun langtool--fuzzy-search (context-regexp length)
+  (let* ((regexp (concat ".*?" context-regexp))
+         (default (cons (point) (+ (point) length))))
+    (or (and (null regexp)
+             (cons (point) (+ (point) length)))
+        (and (looking-at regexp)
+             (cons (match-beginning 1) (match-end 1)))
+        (let ((beg (min (line-beginning-position) (- (point) 20))))
+          (loop while (and (not (bobp))
+                           (<= beg (point)))
+                ;; backward just sentence length to search sentence after point
+                do (condition-case nil
+                       (backward-char length)
+                     (beginning-of-buffer nil))
+                if (looking-at regexp)
+                return (cons (match-beginning 1) (match-end 1))))
+        default)))
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 (defun langtool-current-error-messages ()
@@ -371,9 +395,11 @@ You can change the `langtool-default-language' to apply all session.
                         msg1 "\n\n" 
                         msg2))
                (suggestions (and suggest (split-string suggest "; ")))
+               (context (langtool--pointed-context-regexp msg2))
                (len (langtool--pointed-length msg2)))
           (setq n-tuple (cons
-                          (list line column len suggestions msg1 message rule-id)
+                          (list line column len suggestions 
+                                msg1 message rule-id context)
                           n-tuple))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
@@ -381,13 +407,53 @@ You can change the `langtool-default-language' to apply all session.
           (mapc
            (lambda (tuple)
              (langtool-create-overlay tuple))
-           n-tuple))))))
+           (nreverse n-tuple)))))))
+
+;;FIXME sometimes LanguageTool says wrong column.
+;;TODO magic number.
+(defun langtool--pointed-context-regexp (message)
+  (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
+    (let* ((msg1 (match-string 1 message))
+           (pre (length (match-string 2 message)))
+           (len (length (match-string 3 message)))
+           (end (+ pre len))
+           (sentence (substring msg1 pre end))
+           (regexp (cond
+                    ((string-match "^[[:space:]]+$" sentence)
+                     ;; invalid sentence only have whitespace, 
+                     ;; search with around sentence.
+                     (concat 
+                      "\\("
+                      (let* ((count (length sentence))
+                             (spaces (format "[[:space:]\n]\\{%d\\}" count)))
+                        spaces)
+                      "\\)"
+                      ;; considered truncated spaces that is caused by
+                      ;; `langtool--sentence-to-fuzzy'
+                      "[[:space:]]*?"
+                      ;; to match the correct block
+                      ;; suffix of invalid spaces.
+                      (langtool--sentence-to-fuzzy
+                       (let ((from (min end (length msg1))))
+                         (substring msg1 from (min (length msg1) (+ from 20)))))))
+                    (t
+                     (concat "\\("
+                             (langtool--sentence-to-fuzzy sentence)
+                             "\\)")))))
+      regexp)))
+
+(defun langtool--sentence-to-fuzzy (sentence)
+  (mapconcat 'regexp-quote
+             ;; this sentence is reported by LanguageTool
+             (split-string sentence " +") 
+             ;; LanguageTool interpreted newline as space.
+             "[[:space:]\n]+?"))
 
 (defun langtool--pointed-length (message)
   (or
    (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
         (length (match-string 2 message)))
-   ;; never through here, but return nil from this function, stop everything.
+   ;; never through here, but if return nil from this function make stop everything.
    1))
 
 (defun langtool-process-sentinel (proc event)
@@ -432,11 +498,13 @@ You can change the `langtool-default-language' to apply all session.
                      (file-name-nondirectory f)))
                  (directory-files dir t "^[^.].$")))))))
 
+;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs))
          (aliases (langtool-coding-system-aliases cs))
+         (names (mapcar 'symbol-name aliases))
          tmp)
     (cond
      ((string-match "utf-8" csname)
@@ -451,12 +519,20 @@ You can change the `langtool-default-language' to apply all session.
      ((setq tmp 
             (find-if (lambda (x) 
                        (string-match "iso-8859-\\([0-9]+\\)" x))
-                     (mapcar 'symbol-name aliases)))
+                     names))
       (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
+     ((memq cs '(cyrillic-koi8))
+      "koi8-r")
+     ((setq tmp 
+            (find-if (lambda (x) 
+                       (string-match "^windows-[0-9]+$" x))
+                     names))
+      tmp)
      (t
-      csname))))
+      ;; default guessed as ascii
+      "ascii"))))
 
 (defun langtool-coding-system-aliases (coding-system)
   (if (fboundp 'coding-system-aliases)
@@ -490,6 +566,7 @@ You can change the `langtool-default-language' to apply all session.
                  (cond
                   (pair
                    (let ((sug (nth 1 pair)))
+                     ;;TODO when region contains newline.
                      (delete-region (overlay-start ov) (overlay-end ov))
                      (insert sug)
                      (langtool--erase-overlay ov))
