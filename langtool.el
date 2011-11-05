@@ -255,7 +255,7 @@ You can change the `langtool-default-language' to apply all session.
         (message "No error found. %s" 
                  (substitute-command-keys 
                   (concat
-                   "Type \\[langtool-check-done] to finish check " 
+                   "Type \\[langtool-check-done] to finish checking " 
                    "or type \\[langtool-check-buffer] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
