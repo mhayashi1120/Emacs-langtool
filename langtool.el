@@ -4,7 +4,7 @@
 ;; Keywords: grammer checker
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.1.0
+;; Version: 1.1.1
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -65,13 +65,11 @@
 ;;  M-x langtool-check-done
 
 ;;; TODO:
-;; * generate command line only for debugging.
 ;; * process coding system (test on Windows)
-;; * independ from flymake and compile.
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * java coding <-> elisp coding
+;; * java encoding <-> elisp encoding
 
 ;;; Code:
 
@@ -227,6 +225,7 @@ You can change the `langtool-default-language' to apply all session.
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
+      (langtool--debug "Command" "%s" args)
       (let* ((buffer (langtool-process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
         (set-process-filter proc 'langtool-process-filter)
@@ -235,11 +234,7 @@ You can change the `langtool-default-language' to apply all session.
         (setq langtool-buffer-process proc)
         (setq langtool-mode-line-message 
               (list " LanguageTool" 
-                    (propertize ":run" 'face compilation-info-face)))
-        ;; suppress changing buffer.
-        ;; TODO hook when change this value?
-        ;; (setq buffer-read-only t)
-        ))))
+                    (propertize ":run" 'face compilation-info-face)))))))
 
 (defun langtool-switch-default-language (lang)
   "Switch `langtool-read-lang-name' to LANG"
@@ -259,6 +254,23 @@ You can change the `langtool-default-language' to apply all session.
                    "or type \\[langtool-check-buffer] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
+
+(defvar langtool--debug nil)
+(defun langtool-toggle-debug ()
+  "Toggle LanguageTool debugging."
+  (interactive)
+  (setq langtool--debug (not langtool--debug))
+  (if langtool--debug
+      (message "LanguageTool debug ON.")
+    (message "LanguageTool debug off.")))
+
+(defun langtool--debug (key fmt &rest args)
+  (when langtool--debug
+    (let ((buf (get-buffer-create "*LanguageTool Debug*")))
+      (with-current-buffer buf
+        (goto-char (point-max))
+        (insert "---------- [" key "] ----------\n")
+        (insert (apply 'format fmt args) "\n")))))
 
 (defun langtool-goto-error (overlays predicate)
   (catch 'done
@@ -375,6 +387,7 @@ You can change the `langtool-default-language' to apply all session.
   (generate-new-buffer " *LanguageTool* "))
 
 (defun langtool-process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
     (insert event)
@@ -411,7 +424,6 @@ You can change the `langtool-default-language' to apply all session.
            (nreverse n-tuple)))))))
 
 ;;FIXME sometimes LanguageTool says wrong column.
-;;TODO magic number.
 (defun langtool--pointed-context-regexp (message)
   (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
     (let* ((msg1 (match-string 1 message))
@@ -436,6 +448,7 @@ You can change the `langtool-default-language' to apply all session.
                       ;; suffix of invalid spaces.
                       (langtool--sentence-to-fuzzy
                        (let ((from (min end (length msg1))))
+                         ;;TODO magic number.
                          (substring msg1 from (min (length msg1) (+ from 20)))))))
                     (t
                      (concat "\\("
@@ -568,6 +581,7 @@ You can change the `langtool-default-language' to apply all session.
                   (pair
                    (let ((sug (nth 1 pair)))
                      ;;TODO when region contains newline.
+                     ;; -> insert newline after suggestion.
                      (delete-region (overlay-start ov) (overlay-end ov))
                      (insert sug)
                      (langtool--erase-overlay ov))
