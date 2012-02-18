@@ -1,10 +1,10 @@
 ;;; langtool.el --- Grammer check utility using LanguageTool
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
-;; Keywords: grammer checker java
+;; Keywords: grammer checker
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.1.0
+;; Version: 1.1.1
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -65,18 +65,18 @@
 ;;  M-x langtool-check-done
 
 ;;; TODO:
+;; * process coding system (test on Windows)
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * what happens when change `tab-width'
-;; * java coding <-> elisp coding
+;; * java encoding <-> elisp encoding
 
 ;;; Code:
 
 (eval-when-compile
   (require 'cl))
 
-(require 'flymake)
+(require 'compile)
 
 (defgroup langtool nil
   "Customize langtool"
@@ -85,6 +85,13 @@
 (defvar current-prefix-arg)
 (defvar unread-command-events)
 (defvar locale-language-names)
+
+(defface langtool-errline
+  '((((class color) (background dark)) (:background "Firebrick4"))
+    (((class color) (background light)) (:background "LightPink"))
+    (t (:bold t)))
+  "Face used for marking error lines."
+  :group 'langtool)
 
 (defcustom langtool-java-bin "java"
   "*Executing java command."
@@ -96,7 +103,7 @@
   :group 'langtool
   :type 'file)
 
-(defcustom langtool-default-language "en"
+(defcustom langtool-default-language nil
   "*Language name pass to LanguageTool."
   :group 'langtool
   :type 'string)
@@ -115,6 +122,9 @@ String that separated by comma or list of string.
           (list string)
           string))
 
+(defvar langtool-local-disabled-rules nil)
+(make-variable-buffer-local 'langtool-local-disabled-rules)
+
 (defvar langtool-temp-file nil)
 (make-variable-buffer-local 'langtool-temp-file)
 
@@ -122,16 +132,19 @@ String that separated by comma or list of string.
   (concat
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
-   "Suggestion: \\(.*\\)\n"
-   "\\(\\(?:.*\\)\n\\(?:.*\\)\\)\n"
+   "\\(?:Suggestion: \\(.*\\)\n\\)?"
+   ;; As long as i can read
+   ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
+   "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
     "\n?"                               ; last result have no new-line
    ))
 
 (defvar langtool-buffer-process nil)
 (make-variable-buffer-local 'langtool-buffer-process)
 
-(defvar langtool-mode-line-process 
-  '(langtool-buffer-process " LanguageTool running..."))
+(defvar langtool-mode-line-message nil)
+(make-variable-buffer-local 'langtool-mode-line-message)
+(put 'langtool-mode-line-message 'risky-local-variable t)
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
@@ -170,21 +183,29 @@ Goto previous error."
             (setq unread-command-events (list event))))))))
 
 (defun langtool-check-done ()
-  "Finish LanguageTool process and cleanup existing overlays."
+  "Finish LanguageTool process and cleanup existing colorized texts."
   (interactive)
   (when langtool-buffer-process
     (delete-process langtool-buffer-process))
+  (kill-local-variable 'langtool-buffer-process)
+  (kill-local-variable 'langtool-mode-line-message)
+  (kill-local-variable 'langtool-local-disabled-rules)
   (langtool-clear-buffer-overlays)
   (message "Cleaned up LanguageTool."))
 
 (defun langtool-check-buffer (&optional lang)
   "Check context current buffer and light up errors.
-Optional \\[universal-argument] read LANG name."
+Optional \\[universal-argument] read LANG name.
+
+You can change the `langtool-default-language' to apply all session.
+"
   (interactive
    (when current-prefix-arg
      (list (langtool-read-lang-name))))
   (langtool-check-command)
-  (add-to-list 'mode-line-process langtool-mode-line-process)
+  ;; probablly ok...
+  (when (listp mode-line-process)
+    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   (let ((file (buffer-file-name)))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
@@ -204,12 +225,16 @@ Optional \\[universal-argument] read LANG name."
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
+      (langtool--debug "Command" "%s" args)
       (let* ((buffer (langtool-process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
         (set-process-filter proc 'langtool-process-filter)
         (set-process-sentinel proc 'langtool-process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
-        (setq langtool-buffer-process proc)))))
+        (setq langtool-buffer-process proc)
+        (setq langtool-mode-line-message 
+              (list " LanguageTool" 
+                    (propertize ":run" 'face compilation-info-face)))))))
 
 (defun langtool-switch-default-language (lang)
   "Switch `langtool-read-lang-name' to LANG"
@@ -224,9 +249,28 @@ Optional \\[universal-argument] read LANG name."
     (if (null ovs)
         (message "No error found. %s" 
                  (substitute-command-keys 
-                  "Or type \\[langtool-check-buffer] to re-check buffer"))
+                  (concat
+                   "Type \\[langtool-check-done] to finish checking " 
+                   "or type \\[langtool-check-buffer] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
+
+(defvar langtool--debug nil)
+(defun langtool-toggle-debug ()
+  "Toggle LanguageTool debugging."
+  (interactive)
+  (setq langtool--debug (not langtool--debug))
+  (if langtool--debug
+      (message "LanguageTool debug ON.")
+    (message "LanguageTool debug off.")))
+
+(defun langtool--debug (key fmt &rest args)
+  (when langtool--debug
+    (let ((buf (get-buffer-create "*LanguageTool Debug*")))
+      (with-current-buffer buf
+        (goto-char (point-max))
+        (insert "---------- [" key "] ----------\n")
+        (insert (apply 'format fmt args) "\n")))))
 
 (defun langtool-goto-error (overlays predicate)
   (catch 'done
@@ -249,24 +293,46 @@ Optional \\[universal-argument] read LANG name."
         (len (nth 2 tuple))
         (sugs (nth 3 tuple))
         (msg (nth 4 tuple))
-        (message (nth 5 tuple)))
+        (message (nth 5 tuple))
+        (rule-id (nth 6 tuple))
+        (context (nth 7 tuple)))
     (save-excursion
       (goto-char (point-min))
       (forward-line (1- line))
       (let ((start (line-beginning-position))
             (end (line-end-position)))
+        ;;  1. sketchy move to column that is indicated by LanguageTool.
+        ;;  2. fuzzy match to reported sentence indicated by ^^^ like string.
         (move-to-column col)
-        ;;FIXME LanguageTool column sometimes wrong!
-        ;; restrict to current line
-        (setq start (min end (max start (point))))
-        (move-to-column (+ col len))
-        (setq end (min end (point)))
-        (let ((ov (make-overlay start end)))
-          (overlay-put ov 'langtool-simple-message msg)
-          (overlay-put ov 'langtool-message message)
-          (overlay-put ov 'langtool-suggestions sugs)
-          (overlay-put ov 'priority 1)
-          (overlay-put ov 'face 'flymake-errline))))))
+        (destructuring-bind (start . end)
+            (langtool--fuzzy-search context len)
+          (let ((ov (make-overlay start end)))
+            (overlay-put ov 'langtool-simple-message msg)
+            (overlay-put ov 'langtool-message message)
+            (overlay-put ov 'langtool-suggestions sugs)
+            (overlay-put ov 'langtool-rule-id rule-id)
+            (overlay-put ov 'priority 1)
+            (overlay-put ov 'face 'langtool-errline)))))))
+
+;;FIXME
+;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
+(defun langtool--fuzzy-search (context-regexp length)
+  (let* ((regexp (concat ".*?" context-regexp))
+         (default (cons (point) (+ (point) length))))
+    (or (and (null regexp)
+             (cons (point) (+ (point) length)))
+        (and (looking-at regexp)
+             (cons (match-beginning 1) (match-end 1)))
+        (let ((beg (min (line-beginning-position) (- (point) 20))))
+          (loop while (and (not (bobp))
+                           (<= beg (point)))
+                ;; backward just sentence length to search sentence after point
+                do (condition-case nil
+                       (backward-char length)
+                     (beginning-of-buffer nil))
+                if (looking-at regexp)
+                return (cons (match-beginning 1) (match-end 1))))
+        default)))
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 (defun langtool-current-error-messages ()
@@ -305,18 +371,23 @@ Optional \\[universal-argument] read LANG name."
     (error "Another process is running")))
 
 (defun langtool-disabled-rules ()
-  (cond
-   ((stringp langtool-disabled-rules)
-    langtool-disabled-rules)
-   ((consp langtool-disabled-rules)
-    (mapconcat 'identity langtool-disabled-rules ","))
-   (t
-    "")))
+  (let ((custom langtool-disabled-rules)
+        (locals langtool-local-disabled-rules))
+    (cond
+     ((stringp custom)
+      (mapconcat 'identity 
+                 (cons custom locals)
+                 ","))
+     (t
+      (mapconcat 'identity 
+                 (append custom locals)
+                 ",")))))
 
 (defun langtool-process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
 
 (defun langtool-process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
     (insert event)
@@ -337,10 +408,12 @@ Optional \\[universal-argument] read LANG name."
                 (concat "Rule ID: " rule-id "\n"
                         msg1 "\n\n" 
                         msg2))
-               (suggestions (split-string suggest "; "))
-               (len (langtool--point-length msg2)))
+               (suggestions (and suggest (split-string suggest "; ")))
+               (context (langtool--pointed-context-regexp msg2))
+               (len (langtool--pointed-length msg2)))
           (setq n-tuple (cons
-                          (list line column len suggestions msg1 message)
+                          (list line column len suggestions 
+                                msg1 message rule-id context)
                           n-tuple))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
@@ -348,26 +421,82 @@ Optional \\[universal-argument] read LANG name."
           (mapc
            (lambda (tuple)
              (langtool-create-overlay tuple))
-           n-tuple))))))
+           (nreverse n-tuple)))))))
 
-(defun langtool--point-length (message)
-  (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
-       (length (match-string 2 message))))
+;;FIXME sometimes LanguageTool says wrong column.
+(defun langtool--pointed-context-regexp (message)
+  (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
+    (let* ((msg1 (match-string 1 message))
+           (pre (length (match-string 2 message)))
+           (len (length (match-string 3 message)))
+           (end (+ pre len))
+           (sentence (substring msg1 pre end))
+           (regexp (cond
+                    ((string-match "^[[:space:]]+$" sentence)
+                     ;; invalid sentence only have whitespace, 
+                     ;; search with around sentence.
+                     (concat 
+                      "\\("
+                      (let* ((count (length sentence))
+                             (spaces (format "[[:space:]\n]\\{%d\\}" count)))
+                        spaces)
+                      "\\)"
+                      ;; considered truncated spaces that is caused by
+                      ;; `langtool--sentence-to-fuzzy'
+                      "[[:space:]]*?"
+                      ;; to match the correct block
+                      ;; suffix of invalid spaces.
+                      (langtool--sentence-to-fuzzy
+                       (let ((from (min end (length msg1))))
+                         ;;TODO magic number.
+                         (substring msg1 from (min (length msg1) (+ from 20)))))))
+                    (t
+                     (concat "\\("
+                             (langtool--sentence-to-fuzzy sentence)
+                             "\\)")))))
+      regexp)))
+
+(defun langtool--sentence-to-fuzzy (sentence)
+  (mapconcat 'regexp-quote
+             ;; this sentence is reported by LanguageTool
+             (split-string sentence " +") 
+             ;; LanguageTool interpreted newline as space.
+             "[[:space:]\n]+?"))
+
+(defun langtool--pointed-length (message)
+  (or
+   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
+        (length (match-string 2 message)))
+   ;; never through here, but if return nil from this function make stop everything.
+   1))
 
 (defun langtool-process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
-    (let ((source (process-get proc 'langtool-source-buffer)))
-      (when (buffer-live-p source)
+    (let ((source (process-get proc 'langtool-source-buffer))
+          (code (process-exit-status proc))
+          dead marks msg face)
+      (when (/= code 0)
+        (setq face compilation-error-face))
+      (cond
+       ((buffer-live-p source)
         (with-current-buffer source
-          (setq langtool-buffer-process nil))))
-    (cond
-     ((= (process-exit-status proc) 0)
-      (message "%s"
-               (substitute-command-keys 
-                "Type \\[langtool-correct-buffer] to correct buffer.")))
-     (t
-      (message "LanguageTool finished with code %d" 
-               (process-exit-status proc))))
+          (setq marks (langtool-overlays-region (point-min) (point-max)))
+          (setq face (if marks compilation-info-face compilation-warning-face))
+          (setq langtool-buffer-process nil)
+          (setq langtool-mode-line-message 
+                (list " LanguageTool" 
+                      (propertize ":exit" 'face face)))))
+       (t (setq dead t)))
+      (cond
+       (dead)
+       ((/= code 0)
+        (message "LanguageTool finished with code %d" code))
+       (marks
+        (message "%s"
+                 (substitute-command-keys 
+                  "Type \\[langtool-correct-buffer] to correct buffer.")))
+       (t
+        (message "LanguageTool successfully finished with no error."))))
     (let ((buffer (process-buffer proc)))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))))
@@ -383,11 +512,13 @@ Optional \\[universal-argument] read LANG name."
                      (file-name-nondirectory f)))
                  (directory-files dir t "^[^.].$")))))))
 
+;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
 (defun langtool-java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs))
          (aliases (langtool-coding-system-aliases cs))
+         (names (mapcar 'symbol-name aliases))
          tmp)
     (cond
      ((string-match "utf-8" csname)
@@ -402,12 +533,20 @@ Optional \\[universal-argument] read LANG name."
      ((setq tmp 
             (find-if (lambda (x) 
                        (string-match "iso-8859-\\([0-9]+\\)" x))
-                     (mapcar 'symbol-name aliases)))
+                     names))
       (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
+     ((memq cs '(cyrillic-koi8))
+      "koi8-r")
+     ((setq tmp 
+            (find-if (lambda (x) 
+                       (string-match "^windows-[0-9]+$" x))
+                     names))
+      tmp)
      (t
-      csname))))
+      ;; default guessed as ascii
+      "ascii"))))
 
 (defun langtool-coding-system-aliases (coding-system)
   (if (fboundp 'coding-system-aliases)
@@ -418,35 +557,88 @@ Optional \\[universal-argument] read LANG name."
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
     (unwind-protect
-        (loop for ov in overlays
-              do (langtool--correction-loop ov))
+        (let ((next (car overlays)))
+          (while (setq next (langtool--correction-loop next overlays))))
+      (langtool--expire-buffer-overlays)
       (set-window-configuration conf)
       (kill-buffer (langtool--correction-buffer)))))
 
-(defun langtool--correction-loop (ov)
+(defun langtool--correction-loop (ov overlays)
   (let* ((suggests (overlay-get ov 'langtool-suggestions))
          (msg (overlay-get ov 'langtool-simple-message))
          (alist (langtool--correction-popup msg suggests)))
-    (while (progn
-             (goto-char (overlay-start ov))
-             (let (message-log-max)
-               (message (concat "SPC to leave unchanged, "
-                                "Digit to replace word, "
-                                "`q' to quit")))
-             (let* ((echo-keystrokes)
-                    (c (read-char))
-                    (pair (assq c alist)))
-               (cond
-                (pair
-                 (let ((sug (nth 1 pair)))
-                   (delete-region (overlay-start ov) (overlay-end ov))
-                   (insert sug)
-                   (delete-overlay ov))
-                 nil)
-                ((memq c '(?\q)) 
-                 (keyboard-quit))
-                ((memq c '(?\ )) nil)
-                (t (ding) t)))))))
+    (catch 'next
+      (while (progn
+               (goto-char (overlay-start ov))
+               (let (message-log-max)
+                 (message (concat "C-h or ? for more options; "
+                                  "SPC to leave unchanged, "
+                                  "Digit to replace word")))
+               (let* ((echo-keystrokes) ; suppress echoing
+                      (c (downcase (read-char)))
+                      (pair (assq c alist)))
+                 (cond
+                  (pair
+                   (let ((sug (nth 1 pair)))
+                     ;;TODO when region contains newline.
+                     ;; -> insert newline after suggestion.
+                     (delete-region (overlay-start ov) (overlay-end ov))
+                     (insert sug)
+                     (langtool--erase-overlay ov))
+                   nil)
+                  ((memq c '(?q)) 
+                   (keyboard-quit))
+                  ((memq c '(?c)) 
+                   (langtool--erase-overlay ov)
+                   nil)
+                  ((memq c '(?e))
+                   (message (substitute-command-keys
+                             "Type \\[exit-recursive-edit] to finish the edit."))
+                   (recursive-edit)
+                   ;; stay current cursor and wait next user command.
+                   (throw 'next ov))
+                  ((memq c '(?i))
+                   (let ((rule (overlay-get ov 'langtool-rule-id)))
+                     (unless (member rule langtool-local-disabled-rules)
+                       (setq langtool-local-disabled-rules
+                             (cons rule langtool-local-disabled-rules)))
+                     (langtool--ignore-rule rule overlays))
+                   nil)
+                  ((memq c '(?\C-h ?\?))
+                   (langtool--correction-help)
+                   t)
+                  ((memq c '(?\d))
+                   (throw 'next (langtool--prev-overlay ov overlays)))
+                  ((memq c '(?\s)) nil)
+                  (t (ding) t)))))
+      ;; next item
+      (langtool--next-overlay ov overlays))))
+
+(defun langtool--expire-buffer-overlays ()
+  (mapc
+   (lambda (o)
+     (unless (overlay-get o 'face)
+       (delete-overlay o)))
+   (langtool-overlays-region (point-min) (point-max))))
+
+(defun langtool--ignore-rule (rule overlays)
+  (loop for ov in overlays
+        do (let ((r (overlay-get ov 'langtool-rule-id)))
+             (when (equal r rule)
+               (langtool--erase-overlay ov)))))
+
+(defun langtool--erase-overlay (ov)
+  (overlay-put ov 'face nil))
+
+(defun langtool--next-overlay (current overlays)
+  (loop for o in (cdr (memq current overlays))
+        if (overlay-get o 'face)
+        return o))
+
+(defun langtool--prev-overlay (current overlays)
+  (loop for o in (cdr (memq current (reverse overlays)))
+        if (overlay-get o 'face)
+        return o))
 
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
@@ -457,9 +649,6 @@ Optional \\[universal-argument] read LANG name."
   "Face used to visualize correction."
   :group 'langtool)
 
-;; todo display message C-h ?
-;;TODO add ignore rule
-;; for future session? only current session?
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
@@ -482,20 +671,40 @@ Optional \\[universal-argument] read LANG name."
                    (insert "\n"))
               collect (list c s))))))
 
+(defun langtool--correction-help ()
+  (let ((help-1 "[q/Q]uit correction; [c/C]lear the colorized text; ")
+        (help-2 "[i/I]gnore the rule over current session.")
+        (help-3 "[e/E]dit the buffer manually")
+        (help-4 "SPC skip; DEL move backward;")
+        )
+    (save-window-excursion
+      (unwind-protect
+          (let ((resize-mini-windows 'grow-only))
+            (select-window (minibuffer-window))
+            (erase-buffer)
+            (message nil)
+            ;;(set-minibuffer-window (selected-window))
+            (enlarge-window 2)
+            (insert (concat help-1 "\n" help-2 "\n" help-3 "\n" help-4))
+            (sit-for 5))
+        (erase-buffer)))))
+
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
 
-;; initialize mother tongue
-(unless langtool-mother-tongue
-  (setq langtool-mother-tongue
-        (let ((env (or (getenv "LANG")
-                       (getenv "LC_ALL")))
-              lang)
-          (and env
-               (string-match "^\\(..\\)_" env)
-               (setq lang (downcase (match-string 1 env)))
-               (member lang (langtool-available-languages))
-               lang))))
+;; initialize custom variables guessed from environment.
+(let ((env (or (getenv "LANG")
+               (getenv "LC_ALL")))
+      lang mt)
+  (and env
+       (string-match "^\\(..\\)_" env)
+       (setq lang (downcase (match-string 1 env)))
+       (member lang (langtool-available-languages))
+       (setq mt lang))
+  (unless langtool-mother-tongue
+    (setq langtool-mother-tongue mt))
+  (unless langtool-default-language
+    (setq langtool-default-language (or mt "en"))))
 
 (provide 'langtool)
 
