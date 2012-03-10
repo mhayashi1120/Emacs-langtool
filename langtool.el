@@ -4,7 +4,7 @@
 ;; Keywords: grammer checker
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.1.1
+;; Version: 1.1.2
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -146,6 +146,8 @@ String that separated by comma or list of string.
 (make-variable-buffer-local 'langtool-mode-line-message)
 (put 'langtool-mode-line-message 'risky-local-variable t)
 
+(defvar langtool-error-buffer-name " *LanguageTool Errors* ")
+
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
 Goto next error."
@@ -193,6 +195,7 @@ Goto previous error."
   (langtool-clear-buffer-overlays)
   (message "Cleaned up LanguageTool."))
 
+;;;###autoload
 (defun langtool-check-buffer (&optional lang)
   "Check context current buffer and light up errors.
 Optional \\[universal-argument] read LANG name.
@@ -236,6 +239,7 @@ You can change the `langtool-default-language' to apply all session.
               (list " LanguageTool" 
                     (propertize ":run" 'face compilation-info-face)))))))
 
+;;;###autoload
 (defun langtool-switch-default-language (lang)
   "Switch `langtool-read-lang-name' to LANG"
   (interactive (list (langtool-read-lang-name)))
@@ -334,7 +338,6 @@ You can change the `langtool-default-language' to apply all session.
                 return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 (defun langtool-current-error-messages ()
   (remove nil
           (mapcar
@@ -531,18 +534,18 @@ You can change the `langtool-default-language' to apply all session.
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
      ((setq tmp 
-            (find-if (lambda (x) 
-                       (string-match "iso-8859-\\([0-9]+\\)" x))
-                     names))
+            (loop for x in names
+                  if (string-match "iso-8859-\\([0-9]+\\)" x)
+                  return x))
       (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      ((memq cs '(cyrillic-koi8))
       "koi8-r")
      ((setq tmp 
-            (find-if (lambda (x) 
-                       (string-match "^windows-[0-9]+$" x))
-                     names))
+            (loop for x in names
+                  if (string-match "^windows-[0-9]+$" x)
+                  return x))
       tmp)
      (t
       ;; default guessed as ascii
