@@ -53,7 +53,7 @@
 ;;  M-x langtool-check-buffer
 
 ;; * To correct marker follow LanguageTool suggestions.
-;; 
+;;
 ;;  M-x langtool-correct-buffer
 
 ;; * Goto warning point and
@@ -118,7 +118,7 @@
 String that separated by comma or list of string.
 "
   :group 'langtool
-  :type '(choice 
+  :type '(choice
           (list string)
           string))
 
@@ -128,7 +128,7 @@ String that separated by comma or list of string.
 (defvar langtool-temp-file nil)
 (make-variable-buffer-local 'langtool-temp-file)
 
-(defconst langtool-output-regexp 
+(defconst langtool-output-regexp
   (concat
    "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
    "Message: \\(.*\\)\n"
@@ -153,7 +153,7 @@ String that separated by comma or list of string.
 Goto next error."
   (interactive)
   (let ((overlays (langtool-overlays-region (point) (point-max))))
-    (langtool-goto-error 
+    (langtool-goto-error
      overlays
      (lambda (ov) (< (point) (overlay-start ov))))))
 
@@ -162,7 +162,7 @@ Goto next error."
 Goto previous error."
   (interactive)
   (let ((overlays (langtool-overlays-region (point-min) (point))))
-    (langtool-goto-error 
+    (langtool-goto-error
      (reverse overlays)
      (lambda (ov) (< (overlay-end ov) (point))))))
 
@@ -235,8 +235,8 @@ You can change the `langtool-default-language' to apply all session.
         (set-process-sentinel proc 'langtool-process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
         (setq langtool-buffer-process proc)
-        (setq langtool-mode-line-message 
-              (list " LanguageTool" 
+        (setq langtool-mode-line-message
+              (list " LanguageTool"
                     (propertize ":run" 'face compilation-info-face)))))))
 
 ;;;###autoload
@@ -251,10 +251,10 @@ You can change the `langtool-default-language' to apply all session.
   (interactive)
   (let ((ovs (langtool-overlays-region (point-min) (point-max))))
     (if (null ovs)
-        (message "No error found. %s" 
-                 (substitute-command-keys 
+        (message "No error found. %s"
+                 (substitute-command-keys
                   (concat
-                   "Type \\[langtool-check-done] to finish checking " 
+                   "Type \\[langtool-check-done] to finish checking "
                    "or type \\[langtool-check-buffer] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
@@ -287,7 +287,7 @@ You can change the `langtool-default-language' to apply all session.
     nil))
 
 (defun langtool-read-lang-name ()
-  (completing-read "Lang: " 
+  (completing-read "Lang: "
                    (or (mapcar 'list (langtool-available-languages))
                        locale-language-names)))
 
@@ -378,11 +378,11 @@ You can change the `langtool-default-language' to apply all session.
         (locals langtool-local-disabled-rules))
     (cond
      ((stringp custom)
-      (mapconcat 'identity 
+      (mapconcat 'identity
                  (cons custom locals)
                  ","))
      (t
-      (mapconcat 'identity 
+      (mapconcat 'identity
                  (append custom locals)
                  ",")))))
 
@@ -409,13 +409,13 @@ You can change the `langtool-default-language' to apply all session.
                (msg2 (match-string 6))
                (message
                 (concat "Rule ID: " rule-id "\n"
-                        msg1 "\n\n" 
+                        msg1 "\n\n"
                         msg2))
                (suggestions (and suggest (split-string suggest "; ")))
                (context (langtool--pointed-context-regexp msg2))
                (len (langtool--pointed-length msg2)))
           (setq n-tuple (cons
-                          (list line column len suggestions 
+                          (list line column len suggestions
                                 msg1 message rule-id context)
                           n-tuple))))
       (process-put proc 'langtool-process-done (point))
@@ -436,9 +436,9 @@ You can change the `langtool-default-language' to apply all session.
            (sentence (substring msg1 pre end))
            (regexp (cond
                     ((string-match "^[[:space:]]+$" sentence)
-                     ;; invalid sentence only have whitespace, 
+                     ;; invalid sentence only have whitespace,
                      ;; search with around sentence.
-                     (concat 
+                     (concat
                       "\\("
                       (let* ((count (length sentence))
                              (spaces (format "[[:space:]\n]\\{%d\\}" count)))
@@ -462,7 +462,7 @@ You can change the `langtool-default-language' to apply all session.
 (defun langtool--sentence-to-fuzzy (sentence)
   (mapconcat 'regexp-quote
              ;; this sentence is reported by LanguageTool
-             (split-string sentence " +") 
+             (split-string sentence " +")
              ;; LanguageTool interpreted newline as space.
              "[[:space:]\n]+?"))
 
@@ -486,8 +486,8 @@ You can change the `langtool-default-language' to apply all session.
           (setq marks (langtool-overlays-region (point-min) (point-max)))
           (setq face (if marks compilation-info-face compilation-warning-face))
           (setq langtool-buffer-process nil)
-          (setq langtool-mode-line-message 
-                (list " LanguageTool" 
+          (setq langtool-mode-line-message
+                (list " LanguageTool"
                       (propertize ":exit" 'face face)))))
        (t (setq dead t)))
       (cond
@@ -496,7 +496,7 @@ You can change the `langtool-default-language' to apply all session.
         (message "LanguageTool finished with code %d" code))
        (marks
         (message "%s"
-                 (substitute-command-keys 
+                 (substitute-command-keys
                   "Type \\[langtool-correct-buffer] to correct buffer.")))
        (t
         (message "LanguageTool successfully finished with no error."))))
@@ -533,7 +533,7 @@ You can change the `langtool-default-language' to apply all session.
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
-     ((setq tmp 
+     ((setq tmp
             (loop for x in names
                   if (string-match "iso-8859-\\([0-9]+\\)" x)
                   return x))
@@ -542,7 +542,7 @@ You can change the `langtool-default-language' to apply all session.
       "ascii")
      ((memq cs '(cyrillic-koi8))
       "koi8-r")
-     ((setq tmp 
+     ((setq tmp
             (loop for x in names
                   if (string-match "^windows-[0-9]+$" x)
                   return x))
@@ -589,9 +589,9 @@ You can change the `langtool-default-language' to apply all session.
                      (insert sug)
                      (langtool--erase-overlay ov))
                    nil)
-                  ((memq c '(?q)) 
+                  ((memq c '(?q))
                    (keyboard-quit))
-                  ((memq c '(?c)) 
+                  ((memq c '(?c))
                    (langtool--erase-overlay ov)
                    nil)
                   ((memq c '(?e))
@@ -663,7 +663,7 @@ You can change the `langtool-default-language' to apply all session.
         (insert msg "\n\n")
         (loop for s in suggests
               for c across langtool--correction-keys
-              do (progn 
+              do (progn
                    (insert "(" c ") ")
                    (let ((start (point)))
                      (insert s)
