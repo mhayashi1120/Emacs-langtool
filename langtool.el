@@ -4,7 +4,7 @@
 ;; Keywords: grammer checker
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.1.2
+;; Version: 1.2.0
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -70,6 +70,7 @@
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding
+;; * `langtool-check-region'
 
 ;;; Code:
 
@@ -148,6 +149,11 @@ String that separated by comma or list of string.
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 
+(if (fboundp 'region-active-p)
+    (defalias 'langtool-region-active-p 'region-active-p)
+  (defun langtool-region-active-p ()
+    (and transient-mark-mode mark-active)))
+
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
 Goto next error."
@@ -209,16 +215,22 @@ You can change the `langtool-default-language' to apply all session.
   ;; probablly ok...
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
-  (let ((file (buffer-file-name)))
+  (let* ((file (buffer-file-name))
+         (active-p (langtool-region-active-p))
+         (begin (if active-p (region-beginning) (point-max-marker)))
+         (finish (if active-p (region-end) (point-min-marker))))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
-    (when (or (null file) (buffer-modified-p))
+    (when (or (null file) (buffer-modified-p) active-p)
       (save-restriction
         (widen)
         (let ((coding-system-for-write buffer-file-coding-system))
-          (write-region (point-min) (point-max) langtool-temp-file nil 'no-msg))
+          (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
     (langtool-clear-buffer-overlays)
+    ;;TODO
+    (when active-p
+      (deactivate-mark))
     (let ((command langtool-java-bin)
           args)
       (setq args (list "-jar" (expand-file-name langtool-language-tool-jar)
@@ -234,6 +246,8 @@ You can change the `langtool-default-language' to apply all session.
         (set-process-filter proc 'langtool-process-filter)
         (set-process-sentinel proc 'langtool-process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
+        (process-put proc 'langtool-region-begin begin)
+        (process-put proc 'langtool-region-finish finish)
         (setq langtool-buffer-process proc)
         (setq langtool-mode-line-message
               (list " LanguageTool"
@@ -300,23 +314,22 @@ You can change the `langtool-default-language' to apply all session.
         (message (nth 5 tuple))
         (rule-id (nth 6 tuple))
         (context (nth 7 tuple)))
-    (save-excursion
-      (goto-char (point-min))
-      (forward-line (1- line))
-      (let ((start (line-beginning-position))
-            (end (line-end-position)))
-        ;;  1. sketchy move to column that is indicated by LanguageTool.
-        ;;  2. fuzzy match to reported sentence indicated by ^^^ like string.
-        (move-to-column col)
-        (destructuring-bind (start . end)
-            (langtool--fuzzy-search context len)
-          (let ((ov (make-overlay start end)))
-            (overlay-put ov 'langtool-simple-message msg)
-            (overlay-put ov 'langtool-message message)
-            (overlay-put ov 'langtool-suggestions sugs)
-            (overlay-put ov 'langtool-rule-id rule-id)
-            (overlay-put ov 'priority 1)
-            (overlay-put ov 'face 'langtool-errline)))))))
+    (goto-char (point-min))
+    (forward-line (1- line))
+    (let ((start (line-beginning-position))
+          (end (line-end-position)))
+      ;;  1. sketchy move to column that is indicated by LanguageTool.
+      ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
+      (move-to-column col)
+      (destructuring-bind (start . end)
+          (langtool--fuzzy-search context len)
+        (let ((ov (make-overlay start end)))
+          (overlay-put ov 'langtool-simple-message msg)
+          (overlay-put ov 'langtool-message message)
+          (overlay-put ov 'langtool-suggestions sugs)
+          (overlay-put ov 'langtool-rule-id rule-id)
+          (overlay-put ov 'priority 1)
+          (overlay-put ov 'face 'langtool-errline))))))
 
 ;;FIXME
 ;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
@@ -397,6 +410,8 @@ You can change the `langtool-default-language' to apply all session.
     (let ((min (or (process-get proc 'langtool-process-done)
                    (point-min)))
           (buffer (process-get proc 'langtool-source-buffer))
+          (begin (process-get proc 'langtool-region-begin))
+          (finish (process-get proc 'langtool-region-finish))
           n-tuple)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
@@ -415,16 +430,19 @@ You can change the `langtool-default-language' to apply all session.
                (context (langtool--pointed-context-regexp msg2))
                (len (langtool--pointed-length msg2)))
           (setq n-tuple (cons
-                          (list line column len suggestions
-                                msg1 message rule-id context)
-                          n-tuple))))
+                         (list line column len suggestions
+                               msg1 message rule-id context)
+                         n-tuple))))
       (process-put proc 'langtool-process-done (point))
       (when (buffer-live-p buffer)
         (with-current-buffer buffer
-          (mapc
-           (lambda (tuple)
-             (langtool-create-overlay tuple))
-           (nreverse n-tuple)))))))
+          (save-excursion
+            (save-restriction
+              (narrow-to-region begin finish)
+              (mapc
+               (lambda (tuple)
+                 (langtool-create-overlay tuple))
+               (nreverse n-tuple)))))))))
 
 ;;FIXME sometimes LanguageTool says wrong column.
 (defun langtool--pointed-context-regexp (message)
