@@ -1,7 +1,7 @@
 ;;; langtool.el --- Grammer check utility using LanguageTool
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
-;; Keywords: grammer checker
+;; Keywords: docs
 ;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
 ;; Version: 1.2.0
@@ -34,7 +34,7 @@
 
 ;; This setting is optional
 ;;
-;;     (global-set-key "\C-x4w" 'langtool-check-buffer)
+;;     (global-set-key "\C-x4w" 'langtool-check)
 ;;     (global-set-key "\C-x4W" 'langtool-check-done)
 ;;     (global-set-key "\C-x4l" 'langtool-switch-default-language)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
@@ -50,7 +50,7 @@
 
 ;; * To check current buffer and show warnings.
 ;;
-;;  M-x langtool-check-buffer
+;;  M-x langtool-check
 
 ;; * To correct marker follow LanguageTool suggestions.
 ;;
@@ -70,7 +70,6 @@
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding
-;; * `langtool-check-region'
 
 ;;; Code:
 
@@ -81,6 +80,7 @@
 
 (defgroup langtool nil
   "Customize langtool"
+  :prefix "langtool-"
   :group 'applications)
 
 (defvar current-prefix-arg)
@@ -202,11 +202,15 @@ Goto previous error."
   (message "Cleaned up LanguageTool."))
 
 ;;;###autoload
+(defalias 'langtool-check 'langtool-check-buffer)
+
+;;;###autoload
 (defun langtool-check-buffer (&optional lang)
   "Check context current buffer and light up errors.
 Optional \\[universal-argument] read LANG name.
 
 You can change the `langtool-default-language' to apply all session.
+Restrict to selection when region is activated.
 "
   (interactive
    (when current-prefix-arg
@@ -216,12 +220,12 @@ You can change the `langtool-default-language' to apply all session.
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   (let* ((file (buffer-file-name))
-         (active-p (langtool-region-active-p))
-         (begin (if active-p (region-beginning) (point-max-marker)))
-         (finish (if active-p (region-end) (point-min-marker))))
+         (region-p (langtool-region-active-p))
+         (begin (and region-p (region-beginning)))
+         (finish (and region-p (region-end))))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
-    (when (or (null file) (buffer-modified-p) active-p)
+    (when (or (null file) (buffer-modified-p) region-p)
       (save-restriction
         (widen)
         (let ((coding-system-for-write buffer-file-coding-system))
@@ -229,7 +233,7 @@ You can change the `langtool-default-language' to apply all session.
         (setq file langtool-temp-file)))
     (langtool-clear-buffer-overlays)
     ;;TODO
-    (when active-p
+    (when region-p
       (deactivate-mark))
     (let ((command langtool-java-bin)
           args)
@@ -261,7 +265,7 @@ You can change the `langtool-default-language' to apply all session.
   (message "Now default language is `%s'" lang))
 
 (defun langtool-correct-buffer ()
-  "Execute interactive correction after `langtool-check-buffer'"
+  "Execute interactive correction after `langtool-check'"
   (interactive)
   (let ((ovs (langtool-overlays-region (point-min) (point-max))))
     (if (null ovs)
@@ -269,7 +273,7 @@ You can change the `langtool-default-language' to apply all session.
                  (substitute-command-keys
                   (concat
                    "Type \\[langtool-check-done] to finish checking "
-                   "or type \\[langtool-check-buffer] to re-check buffer")))
+                   "or type \\[langtool-check] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
 
@@ -438,7 +442,8 @@ You can change the `langtool-default-language' to apply all session.
         (with-current-buffer buffer
           (save-excursion
             (save-restriction
-              (narrow-to-region begin finish)
+              (when (and begin finish)
+                (narrow-to-region begin finish))
               (mapc
                (lambda (tuple)
                  (langtool-create-overlay tuple))
