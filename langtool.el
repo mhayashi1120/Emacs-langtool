@@ -70,7 +70,6 @@
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding
-;; * `langtool-check-region'
 
 ;;; Code:
 
