@@ -41,28 +41,30 @@
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ;;
 ;; Currently GNU java version not works.
+;;
 ;;     (setq langtool-java-bin "/path/to/java")
 ;;
 ;; If you want to specify your mother tongue.
+;;
 ;;     (setq langtool-mother-tongue "en")
 
 ;;; Usage:
 
 ;; * To check current buffer and show warnings.
 ;;
-;;  M-x langtool-check
+;;     M-x langtool-check
 
 ;; * To correct marker follow LanguageTool suggestions.
 ;;
-;;  M-x langtool-correct-buffer
+;;     M-x langtool-correct-buffer
 
 ;; * Goto warning point and
 ;;
-;;  M-x langtool-show-message-at-point
+;;     M-x langtool-show-message-at-point
 
 ;; * To finish checking. All marker is removed.
 ;;
-;;  M-x langtool-check-done
+;;     M-x langtool-check-done
 
 ;;; TODO:
 ;; * process coding system (test on Windows)
