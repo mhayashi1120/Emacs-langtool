@@ -33,16 +33,16 @@ If you want to specify your mother tongue.
 
 * To check current buffer and show warnings.
 
-    M-x langtool-check
+	M-x langtool-check (C-x 4 w)
 
 * To correct marker follow LanguageTool suggestions.
 
-    M-x langtool-correct-buffer
+    M-x langtool-correct-buffer (C-x 4 c)
 
 * Goto warning point and
 
-    M-x langtool-show-message-at-point
+    M-x langtool-show-message-at-point (C-x 4 4)
 
 * To finish checking. All marker is removed.
 
-    M-x langtool-check-done
+    M-x langtool-check-done (C-x 4 W)
