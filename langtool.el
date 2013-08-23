@@ -2,9 +2,9 @@
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
-;; URL: http://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
+;; URL: https://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.2.0
+;; Version: 1.2.1
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -41,30 +41,28 @@
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ;;
 ;; Currently GNU java version not works.
-;;
 ;;     (setq langtool-java-bin "/path/to/java")
 ;;
 ;; If you want to specify your mother tongue.
-;;
 ;;     (setq langtool-mother-tongue "en")
 
 ;;; Usage:
 
 ;; * To check current buffer and show warnings.
 ;;
-;;     M-x langtool-check
+;;  M-x langtool-check
 
 ;; * To correct marker follow LanguageTool suggestions.
 ;;
-;;     M-x langtool-correct-buffer
+;;  M-x langtool-correct-buffer
 
 ;; * Goto warning point and
 ;;
-;;     M-x langtool-show-message-at-point
+;;  M-x langtool-show-message-at-point
 
 ;; * To finish checking. All marker is removed.
 ;;
-;;     M-x langtool-check-done
+;;  M-x langtool-check-done
 
 ;;; TODO:
 ;; * process coding system (test on Windows)
@@ -151,10 +149,12 @@ String that separated by comma or list of string.
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 
-(if (fboundp 'region-active-p)
-    (defalias 'langtool-region-active-p 'region-active-p)
-  (defun langtool-region-active-p ()
-    (and transient-mark-mode mark-active)))
+(defun langtool-region-active-p ()
+  (cond
+   ((fboundp 'region-active-p)
+    (funcall 'region-active-p))
+   (t
+    (and transient-mark-mode mark-active))))
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
