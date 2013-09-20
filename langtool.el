@@ -1,4 +1,4 @@
-;;; langtool.el --- Grammer check utility using LanguageTool
+;;; langtool.el --- Grammar check utility using LanguageTool
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs

@@ -1,6 +1,6 @@
 # langtool.el
 
-Grammer check utility using LanguageTool
+Grammar check utility using LanguageTool
 
 ## install:
 
