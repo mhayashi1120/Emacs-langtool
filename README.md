@@ -1,6 +1,6 @@
 # langtool.el
 
-Grammar check utility using LanguageTool
+Grammar checks utility using LanguageTool
 
 ## install:
 
@@ -11,6 +11,10 @@ Put this file into load-path'ed directory, and byte compile it if
 desired. And put the following expression into your ~/.emacs.
 
     (require 'langtool)
+    (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
+
+If you use old version of LanguageTool, may be:
+
     (setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
 
 This setting is optional
