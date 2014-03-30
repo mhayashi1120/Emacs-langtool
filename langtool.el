@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
 ;; Emacs: GNU Emacs 22 or later
-;; Version: 1.2.1
+;; Version: 1.2.2
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -130,15 +130,16 @@ String that separated by comma or list of string.
 (make-variable-buffer-local 'langtool-temp-file)
 
 (defconst langtool-output-regexp
-  (concat
-   "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
-   "Message: \\(.*\\)\n"
-   "\\(?:Suggestion: \\(.*\\)\n\\)?"
-   ;; As long as i can read
-   ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
-   "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
-    "\n?"                               ; last result have no new-line
-   ))
+  (eval-when-compile
+    (concat
+     "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
+     "Message: \\(.*\\)\n"
+     "\\(?:Suggestion: \\(.*\\)\n\\)?"
+     ;; As long as i can read
+     ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
+     "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
+     "\n?"                              ; last result have no new-line
+     )))
 
 (defvar langtool-buffer-process nil)
 (make-variable-buffer-local 'langtool-buffer-process)
@@ -246,7 +247,7 @@ Restrict to selection when region is activated.
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
-      (langtool--debug "Command" "%s" args)
+      (langtool--debug "Command" "%s: %s" command args)
       (let* ((buffer (langtool-process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
         (set-process-filter proc 'langtool-process-filter)
@@ -502,6 +503,7 @@ Restrict to selection when region is activated.
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
+          (pbuf (process-buffer proc))
           dead marks msg face)
       (when (/= code 0)
         (setq face compilation-error-face))
@@ -518,16 +520,23 @@ Restrict to selection when region is activated.
       (cond
        (dead)
        ((/= code 0)
-        (message "LanguageTool finished with code %d" code))
+        (let ((msg
+               (if (buffer-live-p pbuf)
+                   ;; Get first line of output.
+                   (with-current-buffer pbuf
+                     (goto-char (point-min))
+                     (buffer-substring (point) (point-at-eol)))
+                 "Buffer was dead")))
+          (message "LanguageTool exited abnormally with code %d (%s)"
+                   code msg)))
        (marks
         (message "%s"
                  (substitute-command-keys
                   "Type \\[langtool-correct-buffer] to correct buffer.")))
        (t
-        (message "LanguageTool successfully finished with no error."))))
-    (let ((buffer (process-buffer proc)))
-      (when (buffer-live-p buffer)
-        (kill-buffer buffer)))))
+        (message "LanguageTool successfully finished with no error.")))
+      (when (buffer-live-p pbuf)
+        (kill-buffer pbuf)))))
 
 (defun langtool-available-languages ()
   (when (stringp langtool-language-tool-jar)
