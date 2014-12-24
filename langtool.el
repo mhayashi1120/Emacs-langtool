@@ -21,7 +21,9 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
-;;; Install:
+;;; Commentary:
+
+;; ## Install:
 
 ;; Install LanguageTool (and java)
 ;; http://www.languagetool.org/
@@ -30,6 +32,10 @@
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool)
+;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
+
+;; If you use old version of LanguageTool, may be:
+
 ;;     (setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
 
 ;; This setting is optional
@@ -41,30 +47,32 @@
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ;;
 ;; Currently GNU java version not works.
+;;
 ;;     (setq langtool-java-bin "/path/to/java")
 ;;
-;; If you want to specify your mother tongue.
+;; Maybe you want to specify your mother tongue.
+;;
 ;;     (setq langtool-mother-tongue "en")
 
-;;; Usage:
+;; ## Usage:
 
 ;; * To check current buffer and show warnings.
 ;;
-;;  M-x langtool-check
+;;     M-x langtool-check
 
 ;; * To correct marker follow LanguageTool suggestions.
 ;;
-;;  M-x langtool-correct-buffer
+;;     M-x langtool-correct-buffer
 
 ;; * Goto warning point and
 ;;
-;;  M-x langtool-show-message-at-point
+;;     M-x langtool-show-message-at-point
 
 ;; * To finish checking. All marker is removed.
 ;;
-;;  M-x langtool-check-done
+;;     M-x langtool-check-done
 
-;;; TODO:
+;; TODO:
 ;; * process coding system (test on Windows)
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment

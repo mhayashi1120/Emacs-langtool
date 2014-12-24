@@ -2,7 +2,7 @@
 
 Grammar checks utility using LanguageTool
 
-## install:
+## Install:
 
 Install LanguageTool (and java)
 http://www.languagetool.org/
@@ -29,7 +29,7 @@ Currently GNU java version not works.
 
     (setq langtool-java-bin "/path/to/java")
 
-If you want to specify your mother tongue.
+Maybe you want to specify your mother tongue.
 
     (setq langtool-mother-tongue "en")
 
@@ -37,16 +37,16 @@ If you want to specify your mother tongue.
 
 * To check current buffer and show warnings.
 
-	M-x langtool-check (C-x 4 w)
+    M-x langtool-check
 
 * To correct marker follow LanguageTool suggestions.
 
-    M-x langtool-correct-buffer (C-x 4 c)
+    M-x langtool-correct-buffer
 
 * Goto warning point and
 
-    M-x langtool-show-message-at-point (C-x 4 4)
+    M-x langtool-show-message-at-point
 
 * To finish checking. All marker is removed.
 
-    M-x langtool-check-done (C-x 4 W)
+    M-x langtool-check-done
