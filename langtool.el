@@ -2,7 +2,7 @@
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
-;; URL: https://github.com/mhayashi1120/Emacs-langtool/raw/master/langtool.el
+;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 22 or later
 ;; Version: 1.2.3
 
