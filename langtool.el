@@ -167,8 +167,8 @@ String that separated by comma or list of string.
   "Obsoleted function. Should use `langtool-correct-buffer'.
 Goto next error."
   (interactive)
-  (let ((overlays (langtool-overlays-region (point) (point-max))))
-    (langtool-goto-error
+  (let ((overlays (langtool--overlays-region (point) (point-max))))
+    (langtool--goto-error
      overlays
      (lambda (ov) (< (point) (overlay-start ov))))))
 
@@ -176,15 +176,15 @@ Goto next error."
   "Obsoleted function. Should use `langtool-correct-buffer'.
 Goto previous error."
   (interactive)
-  (let ((overlays (langtool-overlays-region (point-min) (point))))
-    (langtool-goto-error
+  (let ((overlays (langtool--overlays-region (point-min) (point))))
+    (langtool--goto-error
      (reverse overlays)
      (lambda (ov) (< (overlay-end ov) (point))))))
 
 (defun langtool-show-message-at-point ()
   "Show error details at point"
   (interactive)
-  (let ((msgs (langtool-current-error-messages)))
+  (let ((msgs (langtool--current-error-messages)))
     (if (null msgs)
         (message "No errors")
       (let ((buf (get-buffer-create langtool-error-buffer-name)))
@@ -207,7 +207,7 @@ Goto previous error."
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
   (kill-local-variable 'langtool-local-disabled-rules)
-  (langtool-clear-buffer-overlays)
+  (langtool--clear-buffer-overlays)
   (message "Cleaned up LanguageTool."))
 
 ;;;###autoload
@@ -224,7 +224,7 @@ Restrict to selection when region is activated.
   (interactive
    (when current-prefix-arg
      (list (langtool-read-lang-name))))
-  (langtool-check-command)
+  (langtool--check-command)
   ;; probablly ok...
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
@@ -232,6 +232,8 @@ Restrict to selection when region is activated.
          (region-p (langtool-region-active-p))
          (begin (and region-p (region-beginning)))
          (finish (and region-p (region-end))))
+    (when region-p
+      (deactivate-mark))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
     (when (or (null file) (buffer-modified-p) region-p)
@@ -240,24 +242,22 @@ Restrict to selection when region is activated.
         (let ((coding-system-for-write buffer-file-coding-system))
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
-    (langtool-clear-buffer-overlays)
-    ;;TODO
-    (when region-p
-      (deactivate-mark))
+    ;; clear previous check
+    (langtool--clear-buffer-overlays)
     (let ((command langtool-java-bin)
           args)
       (setq args (list "-jar" (expand-file-name langtool-language-tool-jar)
-                       "-c" (langtool-java-coding-system buffer-file-coding-system)
+                       "-c" (langtool--java-coding-system buffer-file-coding-system)
                        "-l" (or lang langtool-default-language)
-                       "-d" (langtool-disabled-rules)))
+                       "-d" (langtool--disabled-rules)))
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
       (langtool--debug "Command" "%s: %s" command args)
-      (let* ((buffer (langtool-process-create-buffer))
+      (let* ((buffer (langtool--process-create-buffer))
              (proc (apply 'start-process "LanguageTool" buffer command args)))
-        (set-process-filter proc 'langtool-process-filter)
-        (set-process-sentinel proc 'langtool-process-sentinel)
+        (set-process-filter proc 'langtool--process-filter)
+        (set-process-sentinel proc 'langtool--process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
         (process-put proc 'langtool-region-begin begin)
         (process-put proc 'langtool-region-finish finish)
@@ -276,7 +276,7 @@ Restrict to selection when region is activated.
 (defun langtool-correct-buffer ()
   "Execute interactive correction after `langtool-check'"
   (interactive)
-  (let ((ovs (langtool-overlays-region (point-min) (point-max))))
+  (let ((ovs (langtool--overlays-region (point-min) (point-max))))
     (if (null ovs)
         (message "No error found. %s"
                  (substitute-command-keys
@@ -303,7 +303,7 @@ Restrict to selection when region is activated.
         (insert "---------- [" key "] ----------\n")
         (insert (apply 'format fmt args) "\n")))))
 
-(defun langtool-goto-error (overlays predicate)
+(defun langtool--goto-error (overlays predicate)
   (catch 'done
     (mapc
      (lambda (ov)
@@ -315,10 +315,10 @@ Restrict to selection when region is activated.
 
 (defun langtool-read-lang-name ()
   (completing-read "Lang: "
-                   (or (mapcar 'list (langtool-available-languages))
+                   (or (mapcar 'list (langtool--available-languages))
                        locale-language-names)))
 
-(defun langtool-create-overlay (tuple)
+(defun langtool--create-overlay (tuple)
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
         (len (nth 2 tuple))
@@ -364,20 +364,20 @@ Restrict to selection when region is activated.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool-current-error-messages ()
+(defun langtool--current-error-messages ()
   (remove nil
           (mapcar
            (lambda (ov)
              (overlay-get ov 'langtool-message))
            (overlays-at (point)))))
 
-(defun langtool-clear-buffer-overlays ()
+(defun langtool--clear-buffer-overlays ()
   (mapc
    (lambda (ov)
      (delete-overlay ov))
-   (langtool-overlays-region (point-min) (point-max))))
+   (langtool--overlays-region (point-min) (point-max))))
 
-(defun langtool-overlays-region (start end)
+(defun langtool--overlays-region (start end)
   (sort
    (remove
     nil
@@ -389,7 +389,7 @@ Restrict to selection when region is activated.
    (lambda (ov1 ov2)
      (< (overlay-start ov1) (overlay-start ov2)))))
 
-(defun langtool-check-command ()
+(defun langtool--check-command ()
   (when (or (null langtool-java-bin)
             (not (executable-find langtool-java-bin)))
     (error "java command is not found"))
@@ -399,7 +399,7 @@ Restrict to selection when region is activated.
   (when langtool-buffer-process
     (error "Another process is running")))
 
-(defun langtool-disabled-rules ()
+(defun langtool--disabled-rules ()
   (let ((custom langtool-disabled-rules)
         (locals langtool-local-disabled-rules))
     (cond
@@ -412,10 +412,10 @@ Restrict to selection when region is activated.
                  (append custom locals)
                  ",")))))
 
-(defun langtool-process-create-buffer ()
+(defun langtool--process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
 
-(defun langtool-process-filter (proc event)
+(defun langtool--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
@@ -455,7 +455,7 @@ Restrict to selection when region is activated.
                 (narrow-to-region begin finish))
               (mapc
                (lambda (tuple)
-                 (langtool-create-overlay tuple))
+                 (langtool--create-overlay tuple))
                (nreverse n-tuple)))))))))
 
 ;;FIXME sometimes LanguageTool says wrong column.
@@ -505,7 +505,7 @@ Restrict to selection when region is activated.
    ;; never through here, but if return nil from this function make stop everything.
    1))
 
-(defun langtool-process-sentinel (proc event)
+(defun langtool--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
@@ -516,7 +516,7 @@ Restrict to selection when region is activated.
       (cond
        ((buffer-live-p source)
         (with-current-buffer source
-          (setq marks (langtool-overlays-region (point-min) (point-max)))
+          (setq marks (langtool--overlays-region (point-min) (point-max)))
           (setq face (if marks compilation-info-face compilation-warning-face))
           (setq langtool-buffer-process nil)
           (setq langtool-mode-line-message
@@ -544,7 +544,7 @@ Restrict to selection when region is activated.
       (when (buffer-live-p pbuf)
         (kill-buffer pbuf)))))
 
-(defun langtool-available-languages ()
+(defun langtool--available-languages ()
   (when (stringp langtool-language-tool-jar)
     (let ((dir (expand-file-name "rules" (file-name-directory langtool-language-tool-jar))))
       (when (file-directory-p dir)
@@ -557,10 +557,10 @@ Restrict to selection when region is activated.
 
 ;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
-(defun langtool-java-coding-system (coding-system)
+(defun langtool--java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs))
-         (aliases (langtool-coding-system-aliases cs))
+         (aliases (langtool--coding-system-aliases cs))
          (names (mapcar 'symbol-name aliases))
          tmp)
     (cond
@@ -591,7 +591,7 @@ Restrict to selection when region is activated.
       ;; default guessed as ascii
       "ascii"))))
 
-(defun langtool-coding-system-aliases (coding-system)
+(defun langtool--coding-system-aliases (coding-system)
   (if (fboundp 'coding-system-aliases)
       ;; deceive elint
       (funcall 'coding-system-aliases coding-system)
@@ -662,7 +662,7 @@ Restrict to selection when region is activated.
    (lambda (o)
      (unless (overlay-get o 'face)
        (delete-overlay o)))
-   (langtool-overlays-region (point-min) (point-max))))
+   (langtool--overlays-region (point-min) (point-max))))
 
 (defun langtool--ignore-rule (rule overlays)
   (cl-loop for ov in overlays
@@ -742,7 +742,7 @@ Restrict to selection when region is activated.
   (and env
        (string-match "^\\(..\\)_" env)
        (setq lang (downcase (match-string 1 env)))
-       (member lang (langtool-available-languages))
+       (member lang (langtool--available-languages))
        (setq mt lang))
   (unless langtool-mother-tongue
     (setq langtool-mother-tongue mt))
