@@ -33,10 +33,16 @@
 ;;
 ;;     (require 'langtool)
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
-
+;;
 ;; If you use old version of LanguageTool, may be:
-
+;;
 ;;     (setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
+;;
+;; Alternatively, you can set the classpath where LanguageTool's jars reside:
+;;
+;;     (require 'langtool)
+;;     (setq langtool-java-classpath
+;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 
 ;; This setting is optional
 ;;
@@ -109,6 +115,11 @@
   "*LanguageTool jar file."
   :group 'langtool
   :type 'file)
+
+(defcustom langtool-java-classpath nil
+  "Custom classpath to use when executing languagetool"
+  :group 'langtool
+  :type 'string)
 
 (defcustom langtool-default-language nil
   "*Language name pass to LanguageTool."
@@ -246,10 +257,16 @@ Restrict to selection when region is activated.
     (langtool--clear-buffer-overlays)
     (let ((command langtool-java-bin)
           args)
-      (setq args (list "-jar" (expand-file-name langtool-language-tool-jar)
-                       "-c" (langtool--java-coding-system buffer-file-coding-system)
+      (setq args (list "-c" (langtool--java-coding-system buffer-file-coding-system)
                        "-l" (or lang langtool-default-language)
                        "-d" (langtool--disabled-rules)))
+      (if langtool-java-classpath
+	  (setq args (append (list "-cp" langtool-java-classpath
+				   "org.languagetool.commandline.Main")
+			     args))
+	(setq args (append
+		    (list "-jar" (expand-file-name langtool-language-tool-jar))
+		    args)))
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
@@ -393,9 +410,10 @@ Restrict to selection when region is activated.
   (when (or (null langtool-java-bin)
             (not (executable-find langtool-java-bin)))
     (error "java command is not found"))
-  (when (or (null langtool-language-tool-jar)
-            (not (file-readable-p langtool-language-tool-jar)))
-    (error "langtool jar file is not found"))
+  (unless langtool-java-classpath
+    (when (or (null langtool-language-tool-jar)
+	      (not (file-readable-p langtool-language-tool-jar)))
+      (error "langtool jar file is not found")))
   (when langtool-buffer-process
     (error "Another process is running")))
 
