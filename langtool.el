@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.2.5
+;; Version: 1.3.0
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -74,11 +74,12 @@
 ;;
 ;;     M-x langtool-show-message-at-point
 
-;; * To finish checking. All marker is removed.
+;; * To finish checking. All langtool marker is removed.
 ;;
 ;;     M-x langtool-check-done
 
-;; TODO:
+;;; TODO:
+
 ;; * process coding system (test on Windows)
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
