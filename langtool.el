@@ -262,12 +262,12 @@ Restrict to selection when region is activated.
                        "-l" (or lang langtool-default-language)
                        "-d" (langtool--disabled-rules)))
       (if langtool-java-classpath
-	  (setq args (append (list "-cp" langtool-java-classpath
-				   "org.languagetool.commandline.Main")
-			     args))
-	(setq args (append
-		    (list "-jar" (expand-file-name langtool-language-tool-jar))
-		    args)))
+          (setq args (append (list "-cp" langtool-java-classpath
+                                   "org.languagetool.commandline.Main")
+                             args))
+        (setq args (append
+                    (list "-jar" (expand-file-name langtool-language-tool-jar))
+                    args)))
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (list file)))
@@ -413,7 +413,7 @@ Restrict to selection when region is activated.
     (error "java command is not found"))
   (unless langtool-java-classpath
     (when (or (null langtool-language-tool-jar)
-	      (not (file-readable-p langtool-language-tool-jar)))
+              (not (file-readable-p langtool-language-tool-jar)))
       (error "langtool jar file is not found")))
   (when langtool-buffer-process
     (error "Another process is running")))
