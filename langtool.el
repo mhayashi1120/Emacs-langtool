@@ -3,8 +3,8 @@
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
-;; Emacs: GNU Emacs 22 or later
-;; Version: 1.2.4
+;; Emacs: GNU Emacs 24 or later
+;; Version: 1.2.5
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -81,9 +81,7 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'cl))
-
+(require 'cl-lib)
 (require 'compile)
 
 (defgroup langtool nil
@@ -336,7 +334,7 @@ Restrict to selection when region is activated.
       ;;  1. sketchy move to column that is indicated by LanguageTool.
       ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
       (move-to-column col)
-      (destructuring-bind (start . end)
+      (cl-destructuring-bind (start . end)
           (langtool--fuzzy-search context len)
         (let ((ov (make-overlay start end)))
           (overlay-put ov 'langtool-simple-message msg)
@@ -356,14 +354,14 @@ Restrict to selection when region is activated.
         (and (looking-at regexp)
              (cons (match-beginning 1) (match-end 1)))
         (let ((beg (min (line-beginning-position) (- (point) 20))))
-          (loop while (and (not (bobp))
-                           (<= beg (point)))
-                ;; backward just sentence length to search sentence after point
-                do (condition-case nil
-                       (backward-char length)
-                     (beginning-of-buffer nil))
-                if (looking-at regexp)
-                return (cons (match-beginning 1) (match-end 1))))
+          (cl-loop while (and (not (bobp))
+                              (<= beg (point)))
+                   ;; backward just sentence length to search sentence after point
+                   do (condition-case nil
+                          (backward-char length)
+                        (beginning-of-buffer nil))
+                   if (looking-at regexp)
+                   return (cons (match-beginning 1) (match-end 1))))
         default)))
 
 (defun langtool-current-error-messages ()
@@ -576,18 +574,18 @@ Restrict to selection when region is activated.
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
      ((setq tmp
-            (loop for x in names
-                  if (string-match "iso-8859-\\([0-9]+\\)" x)
-                  return x))
+            (cl-loop for x in names
+                     if (string-match "iso-8859-\\([0-9]+\\)" x)
+                     return x))
       (concat "ISO8859_" (match-string 1 tmp)))
      ((memq cs '(us-ascii raw-text undecided no-conversion))
       "ascii")
      ((memq cs '(cyrillic-koi8))
       "koi8-r")
      ((setq tmp
-            (loop for x in names
-                  if (string-match "^windows-[0-9]+$" x)
-                  return x))
+            (cl-loop for x in names
+                     if (string-match "^windows-[0-9]+$" x)
+                     return x))
       tmp)
      (t
       ;; default guessed as ascii
@@ -667,23 +665,23 @@ Restrict to selection when region is activated.
    (langtool-overlays-region (point-min) (point-max))))
 
 (defun langtool--ignore-rule (rule overlays)
-  (loop for ov in overlays
-        do (let ((r (overlay-get ov 'langtool-rule-id)))
-             (when (equal r rule)
-               (langtool--erase-overlay ov)))))
+  (cl-loop for ov in overlays
+           do (let ((r (overlay-get ov 'langtool-rule-id)))
+                (when (equal r rule)
+                  (langtool--erase-overlay ov)))))
 
 (defun langtool--erase-overlay (ov)
   (overlay-put ov 'face nil))
 
 (defun langtool--next-overlay (current overlays)
-  (loop for o in (cdr (memq current overlays))
-        if (overlay-get o 'face)
-        return o))
+  (cl-loop for o in (cdr (memq current overlays))
+           if (overlay-get o 'face)
+           return o))
 
 (defun langtool--prev-overlay (current overlays)
-  (loop for o in (cdr (memq current (reverse overlays)))
-        if (overlay-get o 'face)
-        return o))
+  (cl-loop for o in (cdr (memq current (reverse overlays)))
+           if (overlay-get o 'face)
+           return o))
 
 (defvar langtool--correction-keys
   [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
@@ -703,18 +701,18 @@ Restrict to selection when region is activated.
       (let ((inhibit-read-only t))
         (erase-buffer)
         (insert msg "\n\n")
-        (loop for s in suggests
-              for c across langtool--correction-keys
-              do (progn
-                   (insert "(" c ") ")
-                   (let ((start (point)))
-                     (insert s)
-                     ;; colorize suggestion.
-                     ;; suggestion may contains whitespace.
-                     (let ((ov (make-overlay start (point))))
-                       (overlay-put ov 'face 'langtool-correction-face)))
-                   (insert "\n"))
-              collect (list c s))))))
+        (cl-loop for s in suggests
+                 for c across langtool--correction-keys
+                 do (progn
+                      (insert "(" c ") ")
+                      (let ((start (point)))
+                        (insert s)
+                        ;; colorize suggestion.
+                        ;; suggestion may contains whitespace.
+                        (let ((ov (make-overlay start (point))))
+                          (overlay-put ov 'face 'langtool-correction-face)))
+                      (insert "\n"))
+                 collect (list c s))))))
 
 (defun langtool--correction-help ()
   (let ((help-1 "[q/Q]uit correction; [c/C]lear the colorized text; ")
