@@ -1,1 +1,2 @@
 (require 'ert)
+(require 'langtool)

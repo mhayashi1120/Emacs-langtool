@@ -1,1 +1,2 @@
 *.elc
+.test-init.el
