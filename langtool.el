@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.3.1
+;; Version: 1.4.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -45,19 +45,29 @@
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 
-;; This setting is optional
+;; These settings are optional:
+
+;; * Key binding if you desired.
 ;;
 ;;     (global-set-key "\C-x4w" 'langtool-check)
 ;;     (global-set-key "\C-x4W" 'langtool-check-done)
 ;;     (global-set-key "\C-x4l" 'langtool-switch-default-language)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
+
+;; * Default language is detected by LANG/LC_ALL environment variable.
+;;   Please set `langtool-default-language` if you need to change default value.
 ;;
-;; Currently GNU java version not works.
+;;     (setq langtool-default-language "en-US")
+;;
+;;   Otherwise invoke `M-x langtool-check` with `C-u` (universal-argument)
+
+;; * Currently GNU java version is not working.
+;;   Please change the variable to your favorite java executable.
 ;;
 ;;     (setq langtool-java-bin "/path/to/java")
-;;
-;; Maybe you want to specify your mother tongue.
+
+;; * Maybe you want to specify your mother tongue.
 ;;
 ;;     (setq langtool-mother-tongue "en")
 
@@ -66,6 +76,11 @@
 ;; * To check current buffer and show warnings.
 ;;
 ;;     M-x langtool-check
+;;
+;;   Check with different language. You can complete supported language
+;;   with C-i/TAB
+;;
+;;     C-u M-x langtool-check
 
 ;; * To correct marker follow LanguageTool suggestions.
 ;;
@@ -85,7 +100,8 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * I don't know well about java. But GNU libgcj version not works..
-;; * java encoding <-> elisp encoding
+;; * java encoding <-> elisp encoding (No enough information..)
+;; * should use --api argument
 
 ;;; Code:
 
@@ -109,12 +125,12 @@
   :group 'langtool)
 
 (defcustom langtool-java-bin "java"
-  "*Executing java command."
+  "Executing java command."
   :group 'langtool
   :type 'file)
 
 (defcustom langtool-language-tool-jar nil
-  "*LanguageTool jar file."
+  "LanguageTool jar file."
   :group 'langtool
   :type 'file)
 
@@ -124,17 +140,17 @@
   :type 'string)
 
 (defcustom langtool-default-language nil
-  "*Language name pass to LanguageTool."
+  "Language name pass to LanguageTool."
   :group 'langtool
   :type 'string)
 
 (defcustom langtool-mother-tongue nil
-  "*Your mothertongue Language name pass to LanguageTool."
+  "Your mothertongue Language name pass to LanguageTool."
   :group 'langtool
   :type 'string)
 
 (defcustom langtool-disabled-rules nil
-  "*Disabled rules pass to LanguageTool.
+  "Disabled rules pass to LanguageTool.
 String that separated by comma or list of string.
 "
   :group 'langtool
@@ -333,9 +349,10 @@ Restrict to selection when region is activated.
     nil))
 
 (defun langtool-read-lang-name ()
-  (completing-read "Lang: "
-                   (or (mapcar 'list (langtool--available-languages))
-                       locale-language-names)))
+  (let ((completion-ignore-case t))
+    (completing-read "Lang: "
+                     (or (mapcar 'list (langtool--available-languages))
+                         locale-language-names))))
 
 (defun langtool--create-overlay (tuple)
   (let ((line (nth 0 tuple))
@@ -565,15 +582,23 @@ Restrict to selection when region is activated.
         (kill-buffer pbuf)))))
 
 (defun langtool--available-languages ()
-  (when (stringp langtool-language-tool-jar)
-    (let ((dir (expand-file-name "rules" (file-name-directory langtool-language-tool-jar))))
-      (when (file-directory-p dir)
-        (remove nil
-                (mapcar
-                 (lambda (f)
-                   (when (file-directory-p f)
-                     (file-name-nondirectory f)))
-                 (directory-files dir t "^[^.].$")))))))
+  (let ((command langtool-java-bin)
+        args res)
+    (if langtool-java-classpath
+        (setq args (append (list "-cp" langtool-java-classpath
+                                 "org.languagetool.commandline.Main")
+                           args))
+      (setq args (append
+                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "--list")
+                  args)))
+    (with-temp-buffer
+      (when (and (executable-find command)
+                 (= (apply 'call-process command nil t nil args) 0))
+        (goto-char (point-min))
+        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+          (setq res (cons (match-string 1) res)))
+        (nreverse res)))))
 
 ;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
@@ -755,19 +780,32 @@ Restrict to selection when region is activated.
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
 
+(defun langtool--guess-language ()
+  (let ((env (or (getenv "LANG")
+                 (getenv "LC_ALL")))
+        (supported-langs (langtool--available-languages))
+        lang country mems)
+    (and env
+         (string-match "\\`\\(..\\)_\\(..\\)" env)
+         (setq lang (downcase (match-string 1 env)))
+         (setq country (upcase (match-string 2 env))))
+    (or
+     (and
+      (setq mems (member (format "%s-%s" lang country) supported-langs))
+      (car mems))
+     (and
+      (setq mems (cl-member-if
+                  (lambda (x) (string-match
+                               (concat "\\`" (regexp-quote lang)) x))
+                  supported-langs))
+      (car mems)))))
+
 ;; initialize custom variables guessed from environment.
-(let ((env (or (getenv "LANG")
-               (getenv "LC_ALL")))
-      lang mt)
-  (and env
-       (string-match "^\\(..\\)_" env)
-       (setq lang (downcase (match-string 1 env)))
-       (member lang (langtool--available-languages))
-       (setq mt lang))
+(let ((mt (langtool--guess-language)))
   (unless langtool-mother-tongue
     (setq langtool-mother-tongue mt))
   (unless langtool-default-language
-    (setq langtool-default-language (or mt "en"))))
+    (setq langtool-default-language (or mt "en-GB"))))
 
 (provide 'langtool)
 

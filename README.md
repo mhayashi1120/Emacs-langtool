@@ -28,7 +28,9 @@ Alternatively, you can set the classpath where LanguageTool's jars reside:
       "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ```
 
-This setting is optional
+These settings are optional:
+
+* Key binding if you desired.
 
 ```
 (global-set-key "\C-x4w" 'langtool-check)
@@ -38,13 +40,23 @@ This setting is optional
 (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ```
 
-Currently GNU java version not works.
+* Default language is detected by LANG/LC_ALL environment variable.
+  Please set `langtool-default-language` if you need to change default value.
+
+```
+(setq langtool-default-language "en-US")
+```
+
+  Otherwise invoke `M-x langtool-check` with `C-u` (universal-argument)
+
+* Currently GNU java version is not working.
+  Please change the variable to your favorite java executable.
 
 ```
 (setq langtool-java-bin "/path/to/java")
 ```
 
-Maybe you want to specify your mother tongue.
+* Maybe you want to specify your mother tongue.
 
 ```
 (setq langtool-mother-tongue "en")
@@ -56,6 +68,13 @@ Maybe you want to specify your mother tongue.
 
 ```
 M-x langtool-check
+```
+
+  Check with different language. You can complete supported language
+  with C-i/TAB
+
+```
+C-u M-x langtool-check
 ```
 
 * To correct marker follow LanguageTool suggestions.
