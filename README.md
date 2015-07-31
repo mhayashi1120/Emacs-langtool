@@ -47,7 +47,7 @@ These settings are optional:
 (setq langtool-default-language "en-US")
 ```
 
-  Otherwise invoke `M-x langtool-check` with `C-u` (universal-argument)
+  Otherwise, invoke `M-x langtool-check` with `C-u` (universal-argument)
 
 * Currently GNU java version is not working.
   Please change the variable to your favorite java executable.
@@ -83,7 +83,7 @@ C-u M-x langtool-check
 M-x langtool-correct-buffer
 ```
 
-* Goto warning point and
+* Go to warning point and
 
 ```
 M-x langtool-show-message-at-point
