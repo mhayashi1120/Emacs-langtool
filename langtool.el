@@ -348,6 +348,29 @@ Restrict to selection when region is activated.
      overlays)
     nil))
 
+(defun langtool--available-languages ()
+  (let ((command langtool-java-bin)
+        args res)
+    (cond
+     ((null langtool-language-tool-jar))
+     (langtool-java-classpath
+      (setq args (append args
+                         (list "-cp" langtool-java-classpath
+                               "org.languagetool.commandline.Main"))))
+     (t
+      (setq args (append
+                  args
+                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "--list")))))
+    (with-temp-buffer
+      (when (and command args
+                 (executable-find command)
+                 (= (apply 'call-process command nil t nil args) 0))
+        (goto-char (point-min))
+        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+          (setq res (cons (match-string 1) res)))
+        (nreverse res)))))
+
 (defun langtool-read-lang-name ()
   (let ((completion-ignore-case t))
     (completing-read "Lang: "
@@ -580,29 +603,6 @@ Restrict to selection when region is activated.
         (message "LanguageTool successfully finished with no error.")))
       (when (buffer-live-p pbuf)
         (kill-buffer pbuf)))))
-
-(defun langtool--available-languages ()
-  (let ((command langtool-java-bin)
-        args res)
-    (cond
-     ((null langtool-language-tool-jar))
-     (langtool-java-classpath
-      (setq args (append args
-                         (list "-cp" langtool-java-classpath
-                               "org.languagetool.commandline.Main"))))
-     (t
-      (setq args (append
-                  args
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
-                  (list "--list")))))
-    (with-temp-buffer
-      (when (and command args
-                 (executable-find command)
-                 (= (apply 'call-process command nil t nil args) 0))
-        (goto-char (point-min))
-        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
-          (setq res (cons (match-string 1) res)))
-        (nreverse res)))))
 
 ;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
