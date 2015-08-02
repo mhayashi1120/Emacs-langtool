@@ -584,16 +584,20 @@ Restrict to selection when region is activated.
 (defun langtool--available-languages ()
   (let ((command langtool-java-bin)
         args res)
-    (if langtool-java-classpath
-        (setq args (append args
-                           (list "-cp" langtool-java-classpath
-                                 "org.languagetool.commandline.Main")))
+    (cond
+     ((null langtool-language-tool-jar))
+     (langtool-java-classpath
+      (setq args (append args
+                         (list "-cp" langtool-java-classpath
+                               "org.languagetool.commandline.Main"))))
+     (t
       (setq args (append
                   args
                   (list "-jar" (expand-file-name langtool-language-tool-jar))
-                  (list "--list"))))
+                  (list "--list")))))
     (with-temp-buffer
-      (when (and (executable-find command)
+      (when (and command args
+                 (executable-find command)
                  (= (apply 'call-process command nil t nil args) 0))
         (goto-char (point-min))
         (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
