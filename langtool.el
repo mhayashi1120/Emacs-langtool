@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.4.1
+;; Version: 1.4.2
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -130,12 +130,18 @@
   :type 'file)
 
 (defcustom langtool-language-tool-jar nil
-  "LanguageTool jar file."
+  "LanguageTool jar file.
+
+No need to set this variable when `langtool-java-classpath' is set."
   :group 'langtool
   :type 'file)
 
 (defcustom langtool-java-classpath nil
-  "Custom classpath to use when executing languagetool"
+  "Custom classpath to use on special environment. (e.g. Arch Linux)
+Do not set both of this variable and `langtool-language-tool-jar'.
+
+https://github.com/mhayashi1120/Emacs-langtool/pull/12
+https://github.com/mhayashi1120/Emacs-langtool/issues/8"
   :group 'langtool
   :type 'string)
 
