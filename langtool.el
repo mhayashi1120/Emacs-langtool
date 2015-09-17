@@ -98,7 +98,9 @@
 ;;     (defun langtool-autoshow-detail-popup (overlays)
 ;;       (when (require 'popup nil t)
 ;;         ;; Do not interrupt current popup
-;;         (unless popup-instances
+;;         (unless (or popup-instances
+;;                     ;; suppress popup after type `C-g' .
+;;                     (memq last-command '(keyboard-quit)))
 ;;           (let ((msg (langtool-details-error-message overlays)))
 ;;             (popup-tip msg)))))
 ;;
