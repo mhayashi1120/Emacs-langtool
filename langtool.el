@@ -656,40 +656,55 @@ String that separated by comma or list of string.
   (run-hooks 'langtool-finish-hook))
 
 ;;FIXME
-;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
+;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
 (defun langtool--java-coding-system (coding-system)
   (let* ((cs (coding-system-base coding-system))
          (csname (symbol-name cs))
          (aliases (langtool--coding-system-aliases cs))
          (names (mapcar 'symbol-name aliases))
+         (case-fold-search nil)
          tmp)
     (cond
      ((string-match "utf-8" csname)
       "utf8")
+     ((string-match "utf-16" csname)
+      (cond
+       ((memq cs '(utf-16le utf-16-le))
+        "UnicodeLittleUnmarked")
+       ((memq cs '(utf-16be utf-16-be))
+        "UnicodeBigUnmarked")
+       (t
+        "utf-16")))
      ((or (string-match "euc.*jp" csname)
           (string-match "japanese-iso-.*8bit" csname))
-      "eucjp")
+      "euc_jp")
      ((string-match "shift.jis" csname)
       "sjis")
      ((string-match "iso.*2022.*jp" csname)
       "iso2022jp")
+     ((memq cs '(euc-kr euc-corea korean-iso-8bit))
+      "euc_kr")
      ((setq tmp
             (cl-loop for x in names
                      if (string-match "iso-8859-\\([0-9]+\\)" x)
                      return x))
       (concat "ISO8859_" (match-string 1 tmp)))
-     ((memq cs '(us-ascii raw-text undecided no-conversion))
+     ((memq cs '(binary us-ascii raw-text undecided no-conversion))
       "ascii")
      ((memq cs '(cyrillic-koi8))
       "koi8-r")
+     ((memq cs '(gb2312))
+      "euc_cn")
+     ((string-match "\\`\\(cp\\|ibm\\)[0-9]+" csname)
+      (downcase csname))
      ((setq tmp
             (cl-loop for x in names
                      if (string-match "^windows-[0-9]+$" x)
                      return x))
       tmp)
      (t
-      ;; default guessed as ascii
-      "ascii"))))
+      ;; simply guessed as same name.
+      (downcase csname)))))
 
 (defun langtool--coding-system-aliases (coding-system)
   (if (fboundp 'coding-system-aliases)
