@@ -202,6 +202,21 @@ String that separated by comma or list of string.
           (list string)
           string))
 
+(defcustom langtool-error-exists-hook nil
+  "TODO"
+  :group 'langtool
+  :type 'hook)
+
+(defcustom langtool-noerror-hook nil
+  "TODO"
+  :group 'langtool
+  :type 'hook)
+
+(defcustom langtool-finish-hook nil
+  "TODO"
+  :group 'langtool
+  :type 'hook)
+
 ;;
 ;; local variables
 ;;
@@ -504,6 +519,38 @@ String that separated by comma or list of string.
                              "\\)")))))
       regexp)))
 
+(defun langtool--invoke-process (file begin finish &optional lang)
+  ;; clear previous check
+  (langtool--clear-buffer-overlays)
+  (let ((command langtool-java-bin)
+        args)
+    (setq args (list "-c" (langtool--java-coding-system
+                           buffer-file-coding-system)
+                     "-l" (or lang langtool-default-language)
+                     "-d" (langtool--disabled-rules)))
+    (if langtool-java-classpath
+        (setq args (append (list "-cp" langtool-java-classpath
+                                 "org.languagetool.commandline.Main")
+                           args))
+      (setq args (append
+                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  args)))
+    (when langtool-mother-tongue
+      (setq args (append args (list "-m" langtool-mother-tongue))))
+    (setq args (append args (list file)))
+    (langtool--debug "Command" "%s: %s" command args)
+    (let* ((buffer (langtool--process-create-buffer))
+           (proc (apply 'start-process "LanguageTool" buffer command args)))
+      (set-process-filter proc 'langtool--process-filter)
+      (set-process-sentinel proc 'langtool--process-sentinel)
+      (process-put proc 'langtool-source-buffer (current-buffer))
+      (process-put proc 'langtool-region-begin begin)
+      (process-put proc 'langtool-region-finish finish)
+      (setq langtool-buffer-process proc)
+      (setq langtool-mode-line-message
+            (list " LanguageTool"
+                  (propertize ":run" 'face compilation-info-face))))))
+
 (defun langtool--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
@@ -535,13 +582,23 @@ String that separated by comma or list of string.
           (message "LanguageTool exited abnormally with code %d (%s)"
                    code msg)))
        (marks
+        (run-hooks 'langtool-error-exists-hook)
         (message "%s"
                  (substitute-command-keys
                   "Type \\[langtool-correct-buffer] to correct buffer.")))
        (t
+        (run-hooks 'langtool-noerror-hook)
         (message "LanguageTool successfully finished with no error.")))
       (when (buffer-live-p pbuf)
         (kill-buffer pbuf)))))
+
+(defun langtool--cleanup-process ()
+  (when langtool-buffer-process
+    (delete-process langtool-buffer-process))
+  (kill-local-variable 'langtool-buffer-process)
+  (kill-local-variable 'langtool-mode-line-message)
+  (kill-local-variable 'langtool-local-disabled-rules)
+  (langtool--clear-buffer-overlays))
 
 ;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
@@ -747,6 +804,69 @@ String that separated by comma or list of string.
                   supported-langs))
       (car mems)))))
 
+;;
+;; autoshow message
+;;
+
+(defcustom langtool-autoshow-message-function
+  'langtool-autoshow-default-message
+  "One argument function of displaying error message reported by langtool.
+`langtool-autoshow-default-popup' / `langtool-autoshow-default-message' are
+the sample implementations."
+  :group 'langtool
+  :type 'function)
+
+(defcustom langtool-autoshow-idle-delay 0.3
+  "Number of seconds while idle time to wait before showing error message."
+  :group 'langtool
+  :type 'number)
+
+(defvar langtool-autoshow--current-idle-delay nil)
+
+(defvar langtool-autoshow--timer nil)
+
+(defun langtool-autoshow-default-popup (message)
+  (when (require 'popup nil t)
+    ;; Do not interupt current popup
+    (unless popup-instances
+      (popup-tip message))))
+
+(defun langtool-autoshow-default-message (message)
+  ;; Do not interupt current message
+  (unless (current-message)
+    (message "%s" message)))
+
+(defun langtool-autoshow--maybe ()
+  (when langtool-autoshow-message-function
+    (condition-case err
+        (let ((msg (langtool-current-simple-error-message)))
+          (when msg
+            (funcall langtool-autoshow-message-function msg)))
+      (error
+       (message "langtool: %s" err)))))
+
+(defun langtool-autoshow--schedule-timer ()
+  (let ((delay (if (numberp langtool-autoshow-idle-delay)
+                   langtool-autoshow-idle-delay
+                 (default-value 'langtool-autoshow-idle-delay))))
+    (unless (and (timerp langtool-autoshow--timer)
+                 (memq langtool-autoshow--timer timer-idle-list))
+      (setq langtool-autoshow--timer
+            (run-with-idle-timer
+             langtool-autoshow--current-idle-delay t
+             'langtool-autoshow--maybe)))
+    (cond
+     ((= langtool-autoshow--current-idle-delay delay))
+     (t
+      (setq langtool-autoshow--current-idle-delay delay)
+      (timer-set-idle-time langtool-autoshow--timer
+                           langtool-autoshow--current-idle-delay t)))))
+
+(defun langtool-autoshow--cleanup-timer ()
+  (unless (langtool-working-p)
+    (cancel-timer langtool-autoshow--timer)
+    (setq langtool-autoshow--timer nil)))
+
 ;;;
 ;;; interactive commands
 ;;;
@@ -796,12 +916,7 @@ Goto previous error."
 (defun langtool-check-done ()
   "Finish LanguageTool process and cleanup existing colorized texts."
   (interactive)
-  (when langtool-buffer-process
-    (delete-process langtool-buffer-process))
-  (kill-local-variable 'langtool-buffer-process)
-  (kill-local-variable 'langtool-mode-line-message)
-  (kill-local-variable 'langtool-local-disabled-rules)
-  (langtool--clear-buffer-overlays)
+  (langtool--cleanup-process)
   (message "Cleaned up LanguageTool."))
 
 ;;;###autoload
@@ -836,35 +951,7 @@ Restrict to selection when region is activated.
         (let ((coding-system-for-write buffer-file-coding-system))
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
-    ;; clear previous check
-    (langtool--clear-buffer-overlays)
-    (let ((command langtool-java-bin)
-          args)
-      (setq args (list "-c" (langtool--java-coding-system buffer-file-coding-system)
-                       "-l" (or lang langtool-default-language)
-                       "-d" (langtool--disabled-rules)))
-      (if langtool-java-classpath
-          (setq args (append (list "-cp" langtool-java-classpath
-                                   "org.languagetool.commandline.Main")
-                             args))
-        (setq args (append
-                    (list "-jar" (expand-file-name langtool-language-tool-jar))
-                    args)))
-      (when langtool-mother-tongue
-        (setq args (append args (list "-m" langtool-mother-tongue))))
-      (setq args (append args (list file)))
-      (langtool--debug "Command" "%s: %s" command args)
-      (let* ((buffer (langtool--process-create-buffer))
-             (proc (apply 'start-process "LanguageTool" buffer command args)))
-        (set-process-filter proc 'langtool--process-filter)
-        (set-process-sentinel proc 'langtool--process-sentinel)
-        (process-put proc 'langtool-source-buffer (current-buffer))
-        (process-put proc 'langtool-region-begin begin)
-        (process-put proc 'langtool-region-finish finish)
-        (setq langtool-buffer-process proc)
-        (setq langtool-mode-line-message
-              (list " LanguageTool"
-                    (propertize ":run" 'face compilation-info-face)))))))
+    (langtool--invoke-process file begin finish lang)))
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
