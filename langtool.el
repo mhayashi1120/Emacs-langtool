@@ -86,13 +86,10 @@
 ;;
 ;;     M-x langtool-correct-buffer
 
-;; * Go to warning point and
+;; * Go to warning point you can see a report from LanguageTool.
+;;   Otherwise:
 ;;
 ;;     M-x langtool-show-message-at-point
-
-;; * To finish checking. All langtool marker is removed.
-;;
-;;     M-x langtool-check-done
 
 ;; * Show LanguageTool report automatically by `popup'
 ;;   This idea come from:
@@ -100,13 +97,17 @@
 ;;
 ;;     (defun langtool-autoshow-detail-popup (overlays)
 ;;       (when (require 'popup nil t)
-;;         ;; Do not interupt current popup
+;;         ;; Do not interrupt current popup
 ;;         (unless popup-instances
 ;;           (let ((msg (langtool-details-error-message overlays)))
 ;;             (popup-tip msg)))))
 
 ;;     (setq langtool-autoshow-message-function
 ;;           'langtool-autoshow-detail-popup)
+
+;; * To finish checking. All langtool marker is removed.
+;;
+;;     M-x langtool-check-done
 
 ;;; TODO:
 
@@ -116,7 +117,6 @@
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * should use --api argument
-;; * consider autoshow correction info
 
 ;;; Code:
 
@@ -404,16 +404,23 @@ String that separated by comma or list of string.
 ;;
 
 (defun langtool-simple-error-message (overlays)
+  "Textify error messages as long as simple."
   (mapconcat
    (lambda (ov)
      (format
-      "[%s] %s (%s)"
+      "[%s] %s%s"
       (overlay-get ov 'langtool-rule-id)
       (overlay-get ov 'langtool-simple-message)
-      (mapconcat 'identity (overlay-get ov 'langtool-suggestions) ", ")))
+      (if (overlay-get ov 'langtool-suggestions)
+          (concat
+           " -> ("
+           (mapconcat 'identity (overlay-get ov 'langtool-suggestions) ", ")
+           ")")
+        "")))
    overlays "\n"))
 
 (defun langtool-details-error-message (overlays)
+  "Textify error messages."
   (mapconcat
    (lambda (ov)
      (format "[%s] %s%s"
@@ -852,10 +859,10 @@ String that separated by comma or list of string.
 
 (defcustom langtool-autoshow-message-function
   'langtool-autoshow-default-message
-  "Function with one argument which displaying error overlay reported by langtool.
+  "Function with one argument which displaying error overlays reported by LanguageTool.
 These overlays hold some useful properties:
  `langtool-simple-message', `langtool-rule-id', `langtool-suggestions' .
-`langtool-autoshow-default-message' is a sample implementations.
+`langtool-autoshow-default-message' is a default/sample implementations.
 See the Commentary section for `popup' implementation."
   :group 'langtool
   :type '(choice
@@ -873,7 +880,7 @@ See the Commentary section for `popup' implementation."
   "Hold idle timer watch every LanguageTool processed buffer.")
 
 (defun langtool-autoshow-default-message (overlays)
-  ;; Do not interupt current message
+  ;; Do not interrupt current message
   (unless (current-message)
     (let ((msg (langtool-simple-error-message overlays)))
       (message "%s" msg))))
@@ -921,7 +928,7 @@ See the Commentary section for `popup' implementation."
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
-Goto next error."
+Go to next error."
   (interactive)
   (let ((overlays (langtool--overlays-region (point) (point-max))))
     (langtool--goto-error
@@ -938,7 +945,7 @@ Goto previous error."
      (lambda (ov) (< (overlay-end ov) (point))))))
 
 (defun langtool-show-message-at-point ()
-  "Show error details at point"
+  "Show error details at point."
   (interactive)
   (let ((msgs (langtool--current-error-messages)))
     (if (null msgs)
