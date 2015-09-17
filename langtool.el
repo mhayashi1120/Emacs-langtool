@@ -429,12 +429,19 @@ Restrict to selection when region is activated.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--current-error-messages ()
+(defun langtool--current-error-overlays ()
   (remove nil
           (mapcar
            (lambda (ov)
-             (overlay-get ov 'langtool-message))
+             (and (overlay-get ov 'langtool-message)
+                  ov))
            (overlays-at (point)))))
+
+(defun langtool--current-error-messages ()
+  (mapcar
+   (lambda (ov)
+     (overlay-get ov 'langtool-message))
+   (langtool--current-error-overlays)))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
@@ -453,6 +460,13 @@ Restrict to selection when region is activated.
      (overlays-in start end)))
    (lambda (ov1 ov2)
      (< (overlay-start ov1) (overlay-start ov2)))))
+
+(defun langtool-working-p ()
+  (cl-loop for buf in (buffer-list)
+           when (with-current-buffer buf
+                  (langtool--overlays-region (point-min) (point-max)))
+           return buf
+           finally return nil))
 
 (defun langtool--check-command ()
   (when (or (null langtool-java-bin)
