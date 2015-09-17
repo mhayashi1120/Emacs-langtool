@@ -888,7 +888,7 @@ See the Commentary section for `popup' implementation."
           (const nil)
           function))
 
-(defcustom langtool-autoshow-idle-delay 0.3
+(defcustom langtool-autoshow-idle-delay 0.5
   "Number of seconds while idle time to wait before showing error message."
   :group 'langtool
   :type 'number)
@@ -906,6 +906,13 @@ See the Commentary section for `popup' implementation."
 
 (defun langtool-autoshow--maybe ()
   (when langtool-autoshow-message-function
+    (let ((delay (langtool-autoshow--idle-delay)))
+      (cond
+       ((equal langtool-autoshow--current-idle-delay delay))
+       (t
+        (setq langtool-autoshow--current-idle-delay delay)
+        (timer-set-idle-time langtool-autoshow--timer
+                             langtool-autoshow--current-idle-delay t))))
     (condition-case err
         (let ((error-overlays (langtool--current-error-overlays)))
           (when error-overlays
@@ -913,21 +920,17 @@ See the Commentary section for `popup' implementation."
       (error
        (message "langtool: %s" err)))))
 
+(defun langtool-autoshow--idle-delay ()
+  (if (numberp langtool-autoshow-idle-delay)
+      langtool-autoshow-idle-delay
+    (default-value 'langtool-autoshow-idle-delay)))
+
 (defun langtool-autoshow-schedule-timer ()
-  (let ((delay (if (numberp langtool-autoshow-idle-delay)
-                   langtool-autoshow-idle-delay
-                 (default-value 'langtool-autoshow-idle-delay))))
-    (unless (and (timerp langtool-autoshow--timer)
-                 (memq langtool-autoshow--timer timer-idle-list))
-      (setq langtool-autoshow--timer
-            (run-with-idle-timer
-             delay t 'langtool-autoshow--maybe)))
-    (cond
-     ((equal langtool-autoshow--current-idle-delay delay))
-     (t
-      (setq langtool-autoshow--current-idle-delay delay)
-      (timer-set-idle-time langtool-autoshow--timer
-                           langtool-autoshow--current-idle-delay t)))))
+  (unless (and (timerp langtool-autoshow--timer)
+               (memq langtool-autoshow--timer timer-idle-list))
+    (setq langtool-autoshow--timer
+          (run-with-idle-timer
+           (langtool-autoshow--idle-delay) t 'langtool-autoshow--maybe))))
 
 (defun langtool-autoshow-cleanup-timer-maybe ()
   (unless (langtool-working-p)
