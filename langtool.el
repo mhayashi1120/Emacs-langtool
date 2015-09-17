@@ -220,7 +220,7 @@ String that separated by comma or list of string.
           string))
 
 (defcustom langtool-error-exists-hook
-  '(langtool-autoshow-schedule-timer)
+  '(langtool-autoshow-ensure-timer)
   "Hook run after LanguageTool process found any error(s)."
   :group 'langtool
   :type 'hook)
@@ -395,9 +395,12 @@ String that separated by comma or list of string.
     nil))
 
 (defun langtool-working-p ()
-  (cl-loop for buf in (buffer-list)
-           when (with-current-buffer buf
-                  (langtool--overlays-region (point-min) (point-max)))
+  (cl-loop with current = (current-buffer)
+           for buf in (buffer-list)
+           when (and (not (eq buf current))
+                     (with-current-buffer buf
+                       (langtool--overlays-region
+                        (point-min) (point-max))))
            return buf
            finally return nil))
 
@@ -925,12 +928,13 @@ See the Commentary section for `popup' implementation."
       langtool-autoshow-idle-delay
     (default-value 'langtool-autoshow-idle-delay)))
 
-(defun langtool-autoshow-schedule-timer ()
+(defun langtool-autoshow-ensure-timer ()
   (unless (and (timerp langtool-autoshow--timer)
                (memq langtool-autoshow--timer timer-idle-list))
     (setq langtool-autoshow--timer
           (run-with-idle-timer
-           (langtool-autoshow--idle-delay) t 'langtool-autoshow--maybe))))
+           (langtool-autoshow--idle-delay) t 'langtool-autoshow--maybe)))
+  (add-hook 'kill-buffer-hook 'langtool-autoshow-cleanup-timer-maybe nil t))
 
 (defun langtool-autoshow-cleanup-timer-maybe ()
   (unless (langtool-working-p)
