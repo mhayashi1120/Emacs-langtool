@@ -520,6 +520,8 @@ String that separated by comma or list of string.
       regexp)))
 
 (defun langtool--invoke-process (file begin finish &optional lang)
+  (when (listp mode-line-process)
+    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
   (langtool--clear-buffer-overlays)
   (let ((command langtool-java-bin)
@@ -917,6 +919,7 @@ Goto previous error."
   "Finish LanguageTool process and cleanup existing colorized texts."
   (interactive)
   (langtool--cleanup-process)
+  (force-mode-line-update)
   (message "Cleaned up LanguageTool."))
 
 ;;;###autoload
@@ -935,8 +938,6 @@ Restrict to selection when region is activated.
      (list (langtool-read-lang-name))))
   (langtool--check-command)
   ;; probablly ok...
-  (when (listp mode-line-process)
-    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   (let* ((file (buffer-file-name))
          (region-p (langtool-region-active-p))
          (begin (and region-p (region-beginning)))
@@ -951,7 +952,8 @@ Restrict to selection when region is activated.
         (let ((coding-system-for-write buffer-file-coding-system))
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
-    (langtool--invoke-process file begin finish lang)))
+    (langtool--invoke-process file begin finish lang)
+    (force-mode-line-update)))
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
