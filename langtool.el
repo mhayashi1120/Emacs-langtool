@@ -253,6 +253,26 @@ String that separated by comma or list of string.
 ;; handle error overlay
 ;;
 
+;;FIXME
+;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
+(defun langtool--fuzzy-search (context-regexp length)
+  (let* ((regexp (concat ".*?" context-regexp))
+         (default (cons (point) (+ (point) length))))
+    (or (and (null regexp)
+             (cons (point) (+ (point) length)))
+        (and (looking-at regexp)
+             (cons (match-beginning 1) (match-end 1)))
+        (let ((beg (min (line-beginning-position) (- (point) 20))))
+          (cl-loop while (and (not (bobp))
+                              (<= beg (point)))
+                   ;; backward just sentence length to search sentence after point
+                   do (condition-case nil
+                          (backward-char length)
+                        (beginning-of-buffer nil))
+                   if (looking-at regexp)
+                   return (cons (match-beginning 1) (match-end 1))))
+        default)))
+
 (defun langtool--create-overlay (tuple)
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
@@ -335,29 +355,16 @@ String that separated by comma or list of string.
      overlays)
     nil))
 
-;;
-;; todo
-;;
+(defun langtool-working-p ()
+  (cl-loop for buf in (buffer-list)
+           when (with-current-buffer buf
+                  (langtool--overlays-region (point-min) (point-max)))
+           return buf
+           finally return nil))
 
-;;FIXME
-;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
-(defun langtool--fuzzy-search (context-regexp length)
-  (let* ((regexp (concat ".*?" context-regexp))
-         (default (cons (point) (+ (point) length))))
-    (or (and (null regexp)
-             (cons (point) (+ (point) length)))
-        (and (looking-at regexp)
-             (cons (match-beginning 1) (match-end 1)))
-        (let ((beg (min (line-beginning-position) (- (point) 20))))
-          (cl-loop while (and (not (bobp))
-                              (<= beg (point)))
-                   ;; backward just sentence length to search sentence after point
-                   do (condition-case nil
-                          (backward-char length)
-                        (beginning-of-buffer nil))
-                   if (looking-at regexp)
-                   return (cons (match-beginning 1) (match-end 1))))
-        default)))
+;;
+;; utility
+;;
 
 (defun langtool-current-simple-error-message ()
   (let ((ovs (langtool--current-error-overlays)))
@@ -376,12 +383,9 @@ String that separated by comma or list of string.
      (overlay-get ov 'langtool-message))
    (langtool--current-error-overlays)))
 
-(defun langtool-working-p ()
-  (cl-loop for buf in (buffer-list)
-           when (with-current-buffer buf
-                  (langtool--overlays-region (point-min) (point-max)))
-           return buf
-           finally return nil))
+;;
+;; LanguageTool Process
+;;
 
 (defun langtool--disabled-rules ()
   (let ((custom langtool-disabled-rules)
@@ -395,16 +399,6 @@ String that separated by comma or list of string.
       (mapconcat 'identity
                  (append custom locals)
                  ",")))))
-
-(defun langtool--ignore-rule (rule overlays)
-  (cl-loop for ov in overlays
-           do (let ((r (overlay-get ov 'langtool-rule-id)))
-                (when (equal r rule)
-                  (langtool--erase-overlay ov)))))
-
-;;
-;; LanguageTool Process
-;;
 
 (defun langtool--check-command ()
   (when (or (null langtool-java-bin)
@@ -618,6 +612,11 @@ String that separated by comma or list of string.
 ;; interactive correction
 ;;
 
+(defun langtool--ignore-rule (rule overlays)
+  (cl-loop for ov in overlays
+           do (let ((r (overlay-get ov 'langtool-rule-id)))
+                (when (equal r rule)
+                  (langtool--erase-overlay ov)))))
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
     (unwind-protect
