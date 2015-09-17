@@ -230,6 +230,10 @@ String that separated by comma or list of string.
 ;;; Internal functions
 ;;;
 
+;;
+;; basic functions
+;;
+
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
@@ -245,44 +249,9 @@ String that separated by comma or list of string.
         (insert "---------- [" key "] ----------\n")
         (insert (apply 'format fmt args) "\n")))))
 
-(defun langtool--goto-error (overlays predicate)
-  (catch 'done
-    (mapc
-     (lambda (ov)
-       (when (funcall predicate ov)
-         (goto-char (overlay-start ov))
-         (throw 'done t)))
-     overlays)
-    nil))
-
-(defun langtool--available-languages ()
-  (let ((command langtool-java-bin)
-        args res)
-    (cond
-     ((null langtool-language-tool-jar))
-     (langtool-java-classpath
-      (setq args (append args
-                         (list "-cp" langtool-java-classpath
-                               "org.languagetool.commandline.Main"))))
-     (t
-      (setq args (append
-                  args
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
-                  (list "--list")))))
-    (with-temp-buffer
-      (when (and command args
-                 (executable-find command)
-                 (= (apply 'call-process command nil t nil args) 0))
-        (goto-char (point-min))
-        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
-          (setq res (cons (match-string 1) res)))
-        (nreverse res)))))
-
-(defun langtool-read-lang-name ()
-  (let ((completion-ignore-case t))
-    (completing-read "Lang: "
-                     (or (mapcar 'list (langtool--available-languages))
-                         locale-language-names))))
+;;
+;; handle error overlay
+;;
 
 (defun langtool--create-overlay (tuple)
   (let ((line (nth 0 tuple))
@@ -310,6 +279,66 @@ String that separated by comma or list of string.
           (overlay-put ov 'priority 1)
           (overlay-put ov 'face 'langtool-errline))))))
 
+(defun langtool--clear-buffer-overlays ()
+  (mapc
+   (lambda (ov)
+     (delete-overlay ov))
+   (langtool--overlays-region (point-min) (point-max))))
+
+(defun langtool--overlays-region (start end)
+  (sort
+   (remove
+    nil
+    (mapcar
+     (lambda (ov)
+       (when (overlay-get ov 'langtool-message)
+         ov))
+     (overlays-in start end)))
+   (lambda (ov1 ov2)
+     (< (overlay-start ov1) (overlay-start ov2)))))
+
+(defun langtool--current-error-overlays ()
+  (remove nil
+          (mapcar
+           (lambda (ov)
+             (and (overlay-get ov 'langtool-message)
+                  ov))
+           (overlays-at (point)))))
+
+(defun langtool--expire-buffer-overlays ()
+  (mapc
+   (lambda (o)
+     (unless (overlay-get o 'face)
+       (delete-overlay o)))
+   (langtool--overlays-region (point-min) (point-max))))
+
+(defun langtool--erase-overlay (ov)
+  (overlay-put ov 'face nil))
+
+(defun langtool--next-overlay (current overlays)
+  (cl-loop for o in (cdr (memq current overlays))
+           if (overlay-get o 'face)
+           return o))
+
+(defun langtool--prev-overlay (current overlays)
+  (cl-loop for o in (cdr (memq current (reverse overlays)))
+           if (overlay-get o 'face)
+           return o))
+
+(defun langtool--goto-error (overlays predicate)
+  (catch 'done
+    (mapc
+     (lambda (ov)
+       (when (funcall predicate ov)
+         (goto-char (overlay-start ov))
+         (throw 'done t)))
+     overlays)
+    nil))
+
+;;
+;; todo
+;;
+
 ;;FIXME
 ;;http://sourceforge.net/tracker/?func=detail&aid=3054895&group_id=110216&atid=655717
 (defun langtool--fuzzy-search (context-regexp length)
@@ -330,14 +359,6 @@ String that separated by comma or list of string.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--current-error-overlays ()
-  (remove nil
-          (mapcar
-           (lambda (ov)
-             (and (overlay-get ov 'langtool-message)
-                  ov))
-           (overlays-at (point)))))
-
 (defun langtool-current-simple-error-message ()
   (let ((ovs (langtool--current-error-overlays)))
     (and ovs
@@ -355,41 +376,12 @@ String that separated by comma or list of string.
      (overlay-get ov 'langtool-message))
    (langtool--current-error-overlays)))
 
-(defun langtool--clear-buffer-overlays ()
-  (mapc
-   (lambda (ov)
-     (delete-overlay ov))
-   (langtool--overlays-region (point-min) (point-max))))
-
-(defun langtool--overlays-region (start end)
-  (sort
-   (remove
-    nil
-    (mapcar
-     (lambda (ov)
-       (when (overlay-get ov 'langtool-message)
-         ov))
-     (overlays-in start end)))
-   (lambda (ov1 ov2)
-     (< (overlay-start ov1) (overlay-start ov2)))))
-
 (defun langtool-working-p ()
   (cl-loop for buf in (buffer-list)
            when (with-current-buffer buf
                   (langtool--overlays-region (point-min) (point-max)))
            return buf
            finally return nil))
-
-(defun langtool--check-command ()
-  (when (or (null langtool-java-bin)
-            (not (executable-find langtool-java-bin)))
-    (error "java command is not found"))
-  (unless langtool-java-classpath
-    (when (or (null langtool-language-tool-jar)
-              (not (file-readable-p langtool-language-tool-jar)))
-      (error "langtool jar file is not found")))
-  (when langtool-buffer-process
-    (error "Another process is running")))
 
 (defun langtool--disabled-rules ()
   (let ((custom langtool-disabled-rules)
@@ -404,8 +396,43 @@ String that separated by comma or list of string.
                  (append custom locals)
                  ",")))))
 
+(defun langtool--ignore-rule (rule overlays)
+  (cl-loop for ov in overlays
+           do (let ((r (overlay-get ov 'langtool-rule-id)))
+                (when (equal r rule)
+                  (langtool--erase-overlay ov)))))
+
+;;
+;; LanguageTool Process
+;;
+
+(defun langtool--check-command ()
+  (when (or (null langtool-java-bin)
+            (not (executable-find langtool-java-bin)))
+    (error "java command is not found"))
+  (unless langtool-java-classpath
+    (when (or (null langtool-language-tool-jar)
+              (not (file-readable-p langtool-language-tool-jar)))
+      (error "langtool jar file is not found")))
+  (when langtool-buffer-process
+    (error "Another process is running")))
+
 (defun langtool--process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
+
+(defun langtool--sentence-to-fuzzy (sentence)
+  (mapconcat 'regexp-quote
+             ;; this sentence is reported by LanguageTool
+             (split-string sentence " +")
+             ;; LanguageTool interpreted newline as space.
+             "[[:space:]\n]+?"))
+
+(defun langtool--pointed-length (message)
+  (or
+   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
+        (length (match-string 2 message)))
+   ;; never through here, but if return nil from this function make stop everything.
+   1))
 
 (defun langtool--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
@@ -482,20 +509,6 @@ String that separated by comma or list of string.
                              (langtool--sentence-to-fuzzy sentence)
                              "\\)")))))
       regexp)))
-
-(defun langtool--sentence-to-fuzzy (sentence)
-  (mapconcat 'regexp-quote
-             ;; this sentence is reported by LanguageTool
-             (split-string sentence " +")
-             ;; LanguageTool interpreted newline as space.
-             "[[:space:]\n]+?"))
-
-(defun langtool--pointed-length (message)
-  (or
-   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
-        (length (match-string 2 message)))
-   ;; never through here, but if return nil from this function make stop everything.
-   1))
 
 (defun langtool--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
@@ -578,6 +591,33 @@ String that separated by comma or list of string.
       (funcall 'coding-system-aliases coding-system)
     (coding-system-get coding-system 'alias-coding-systems)))
 
+(defun langtool--available-languages ()
+  (let ((command langtool-java-bin)
+        args res)
+    (cond
+     ((null langtool-language-tool-jar))
+     (langtool-java-classpath
+      (setq args (append args
+                         (list "-cp" langtool-java-classpath
+                               "org.languagetool.commandline.Main"))))
+     (t
+      (setq args (append
+                  args
+                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "--list")))))
+    (with-temp-buffer
+      (when (and command args
+                 (executable-find command)
+                 (= (apply 'call-process command nil t nil args) 0))
+        (goto-char (point-min))
+        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+          (setq res (cons (match-string 1) res)))
+        (nreverse res)))))
+
+;;
+;; interactive correction
+;;
+
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
     (unwind-protect
@@ -638,32 +678,6 @@ String that separated by comma or list of string.
       ;; next item
       (langtool--next-overlay ov overlays))))
 
-(defun langtool--expire-buffer-overlays ()
-  (mapc
-   (lambda (o)
-     (unless (overlay-get o 'face)
-       (delete-overlay o)))
-   (langtool--overlays-region (point-min) (point-max))))
-
-(defun langtool--ignore-rule (rule overlays)
-  (cl-loop for ov in overlays
-           do (let ((r (overlay-get ov 'langtool-rule-id)))
-                (when (equal r rule)
-                  (langtool--erase-overlay ov)))))
-
-(defun langtool--erase-overlay (ov)
-  (overlay-put ov 'face nil))
-
-(defun langtool--next-overlay (current overlays)
-  (cl-loop for o in (cdr (memq current overlays))
-           if (overlay-get o 'face)
-           return o))
-
-(defun langtool--prev-overlay (current overlays)
-  (cl-loop for o in (cdr (memq current (reverse overlays)))
-           if (overlay-get o 'face)
-           return o))
-
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
@@ -707,6 +721,10 @@ String that separated by comma or list of string.
 (defun langtool--correction-buffer ()
   (get-buffer-create "*Langtool Correction*"))
 
+;;
+;; initialize
+;;
+
 (defun langtool--guess-language ()
   (let ((env (or (getenv "LANG")
                  (getenv "LC_ALL")))
@@ -733,6 +751,12 @@ String that separated by comma or list of string.
 ;;;
 ;;; interactive commands
 ;;;
+
+(defun langtool-read-lang-name ()
+  (let ((completion-ignore-case t))
+    (completing-read "Lang: "
+                     (or (mapcar 'list (langtool--available-languages))
+                         locale-language-names))))
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
