@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.4.2
+;; Version: 1.4.3
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -436,6 +436,17 @@ Restrict to selection when region is activated.
              (and (overlay-get ov 'langtool-message)
                   ov))
            (overlays-at (point)))))
+
+(defun langtool-current-simple-error-message ()
+  (let ((ovs (langtool--current-error-overlays)))
+    (and ovs
+         (mapconcat
+          (lambda (ov)
+            (format
+             "[%s] %s"
+             (overlay-get ov 'langtool-rule-id)
+             (overlay-get ov 'langtool-simple-message)))
+          ovs "\n"))))
 
 (defun langtool--current-error-messages ()
   (mapcar
