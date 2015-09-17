@@ -98,14 +98,15 @@
 ;;   This idea come from:
 ;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
 ;;
-;;     (defun langtool-autoshow-default-popup (message)
+;;     (defun langtool-autoshow-detail-popup (overlays)
 ;;       (when (require 'popup nil t)
 ;;         ;; Do not interupt current popup
 ;;         (unless popup-instances
-;;           (popup-tip message))))
-;;
+;;           (let ((msg (langtool-details-error-message overlays)))
+;;             (popup-tip msg)))))
+
 ;;     (setq langtool-autoshow-message-function
-;;           'langtool-autoshow-default-popup)
+;;           'langtool-autoshow-detail-popup)
 
 ;;; TODO:
 
@@ -255,7 +256,12 @@ String that separated by comma or list of string.
 (defvar langtool--debug nil)
 
 (defvar langtool--correction-keys
-  [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
+  ;; (q)uit, (c)lear, (e)dit, (i)gnore
+  [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9
+      ;; suggestions may over 10.
+      ;; define rest of alphabet just in case.
+      ?a ?b ?d ?f ?g ?h ?j ?k ?l ?m ?n
+      ?o ?p ?r ?s ?t ?u ?v ?w ?x ?y ?z])
 
 ;;;
 ;;; Internal functions
@@ -397,16 +403,32 @@ String that separated by comma or list of string.
 ;; utility
 ;;
 
-(defun langtool-current-simple-error-message ()
-  (let ((ovs (langtool--current-error-overlays)))
-    (and ovs
-         (mapconcat
-          (lambda (ov)
-            (format
-             "[%s] %s"
+(defun langtool-simple-error-message (overlays)
+  (mapconcat
+   (lambda (ov)
+     (format
+      "[%s] %s (%s)"
+      (overlay-get ov 'langtool-rule-id)
+      (overlay-get ov 'langtool-simple-message)
+      (mapconcat 'identity (overlay-get ov 'langtool-suggestions) ", ")))
+   overlays "\n"))
+
+(defun langtool-details-error-message (overlays)
+  (mapconcat
+   (lambda (ov)
+     (format "[%s] %s%s"
              (overlay-get ov 'langtool-rule-id)
-             (overlay-get ov 'langtool-simple-message)))
-          ovs "\n"))))
+             (overlay-get ov 'langtool-simple-message)
+             (if (overlay-get ov 'langtool-suggestions)
+                 (concat
+                  "\n"
+                  (mapconcat
+                   'identity
+                   (overlay-get ov 'langtool-suggestions)
+                   "\n"))
+               "")))
+   overlays
+   "\n"))
 
 (defun langtool--current-error-messages ()
   (mapcar
@@ -693,6 +715,7 @@ String that separated by comma or list of string.
            do (let ((r (overlay-get ov 'langtool-rule-id)))
                 (when (equal r rule)
                   (langtool--erase-overlay ov)))))
+
 (defun langtool--correction (overlays)
   (let ((conf (current-window-configuration)))
     (unwind-protect
@@ -829,11 +852,15 @@ String that separated by comma or list of string.
 
 (defcustom langtool-autoshow-message-function
   'langtool-autoshow-default-message
-  "One argument function of displaying error message reported by langtool.
+  "Function with one argument which displaying error overlay reported by langtool.
+These overlays hold some useful properties:
+ `langtool-simple-message', `langtool-rule-id', `langtool-suggestions' .
 `langtool-autoshow-default-message' is a sample implementations.
 See the Commentary section for `popup' implementation."
   :group 'langtool
-  :type 'function)
+  :type '(choice
+          (const nil)
+          function))
 
 (defcustom langtool-autoshow-idle-delay 0.3
   "Number of seconds while idle time to wait before showing error message."
@@ -845,17 +872,18 @@ See the Commentary section for `popup' implementation."
 (defvar langtool-autoshow--timer nil
   "Hold idle timer watch every LanguageTool processed buffer.")
 
-(defun langtool-autoshow-default-message (message)
+(defun langtool-autoshow-default-message (overlays)
   ;; Do not interupt current message
   (unless (current-message)
-    (message "%s" message)))
+    (let ((msg (langtool-simple-error-message overlays)))
+      (message "%s" msg))))
 
 (defun langtool-autoshow--maybe ()
   (when langtool-autoshow-message-function
     (condition-case err
-        (let ((msg (langtool-current-simple-error-message)))
-          (when msg
-            (funcall langtool-autoshow-message-function msg)))
+        (let ((error-overlays (langtool--current-error-overlays)))
+          (when error-overlays
+            (funcall langtool-autoshow-message-function error-overlays)))
       (error
        (message "langtool: %s" err)))))
 
