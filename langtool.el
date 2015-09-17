@@ -101,7 +101,7 @@
 ;;         (unless popup-instances
 ;;           (let ((msg (langtool-details-error-message overlays)))
 ;;             (popup-tip msg)))))
-
+;;
 ;;     (setq langtool-autoshow-message-function
 ;;           'langtool-autoshow-detail-popup)
 
@@ -423,19 +423,21 @@ String that separated by comma or list of string.
   "Textify error messages."
   (mapconcat
    (lambda (ov)
-     (format "[%s] %s%s"
-             (overlay-get ov 'langtool-rule-id)
-             (overlay-get ov 'langtool-simple-message)
-             (if (overlay-get ov 'langtool-suggestions)
-                 (concat
-                  "\n"
-                  (mapconcat
-                   'identity
-                   (overlay-get ov 'langtool-suggestions)
-                   "\n"))
-               "")))
+     (concat
+      (format "Rule ID: %s\n"
+              (overlay-get ov 'langtool-rule-id))
+      (format "Message: %s\n"
+              (overlay-get ov 'langtool-simple-message))
+      (if (overlay-get ov 'langtool-suggestions)
+          (concat
+           "Suggestions: "
+           (mapconcat
+            'identity
+            (overlay-get ov 'langtool-suggestions)
+            "; "))
+        "")))
    overlays
-   "\n"))
+   "\n\n"))
 
 (defun langtool--current-error-messages ()
   (mapcar
@@ -827,6 +829,21 @@ String that separated by comma or list of string.
   (get-buffer-create "*Langtool Correction*"))
 
 ;;
+;; Misc UI
+;;
+
+(defun langtool--show-message-buffer (msg)
+  (let ((buf (get-buffer-create langtool-error-buffer-name)))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert msg))
+    (save-window-excursion
+      (display-buffer buf)
+      (let* ((echo-keystrokes)
+             (event (read-event)))
+        (setq unread-command-events (list event))))))
+
+;;
 ;; initialize
 ;;
 
@@ -947,20 +964,20 @@ Goto previous error."
 (defun langtool-show-message-at-point ()
   "Show error details at point."
   (interactive)
+  (let ((ovs (langtool--current-error-overlays)))
+    (if (null ovs)
+        (message "No errors")
+      (let ((msg (langtool-details-error-message ovs)))
+        (langtool--show-message-buffer msg)))))
+
+(defun langtool-show-brief-message-at-point ()
+  "Show error brief message at point."
+  (interactive)
   (let ((msgs (langtool--current-error-messages)))
     (if (null msgs)
         (message "No errors")
-      (let ((buf (get-buffer-create langtool-error-buffer-name)))
-        (with-current-buffer buf
-          (erase-buffer)
-          (mapc
-           (lambda (msg) (insert msg "\n"))
-           msgs))
-        (save-window-excursion
-          (display-buffer buf)
-          (let* ((echo-keystrokes)
-                 (event (read-event)))
-            (setq unread-command-events (list event))))))))
+      (langtool--show-message-buffer
+       (mapconcat 'identity msgs "\n")))))
 
 (defun langtool-check-done ()
   "Finish LanguageTool process and cleanup existing colorized texts."
