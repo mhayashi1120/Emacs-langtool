@@ -95,6 +95,8 @@
 ;;     M-x langtool-check-done
 
 ;; * Show LanguageTool report automatically by `popup'
+;;   This come from:
+;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
 ;;
 ;;     (defun langtool-autoshow-default-popup (message)
 ;;       (when (require 'popup nil t)
@@ -827,7 +829,7 @@ String that separated by comma or list of string.
 (defcustom langtool-autoshow-message-function
   'langtool-autoshow-default-message
   "One argument function of displaying error message reported by langtool.
-`langtool-autoshow-default-message' are the sample implementations.
+`langtool-autoshow-default-message' is a sample implementations.
 See the Commentary section for `popup' implementation."
   :group 'langtool
   :type 'function)
@@ -991,6 +993,10 @@ Restrict to selection when region is activated.
   (if langtool--debug
       (message "LanguageTool debug ON.")
     (message "LanguageTool debug off.")))
+
+;;;
+;;; initialize
+;;;
 
 ;; initialize custom variables guessed from environment.
 (let ((mt (langtool--guess-language)))
