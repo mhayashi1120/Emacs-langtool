@@ -115,6 +115,7 @@
 ;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * should use --api argument
+;; * consider autoshow correction info
 
 ;;; Code:
 
@@ -216,7 +217,7 @@ String that separated by comma or list of string.
           string))
 
 (defcustom langtool-error-exists-hook
-  '(langtool-autoshow--schedule-timer)
+  '(langtool-autoshow-schedule-timer)
   "Hook run after LanguageTool process found any error(s)."
   :group 'langtool
   :type 'hook)
@@ -227,7 +228,7 @@ String that separated by comma or list of string.
   :type 'hook)
 
 (defcustom langtool-finish-hook
-  '(langtool-autoshow--cleanup-timer)
+  '(langtool-autoshow-cleanup-timer-maybe)
   "Hook run after cleanup buffer."
   :group 'langtool
   :type 'hook)
@@ -858,7 +859,7 @@ See the Commentary section for `popup' implementation."
       (error
        (message "langtool: %s" err)))))
 
-(defun langtool-autoshow--schedule-timer ()
+(defun langtool-autoshow-schedule-timer ()
   (let ((delay (if (numberp langtool-autoshow-idle-delay)
                    langtool-autoshow-idle-delay
                  (default-value 'langtool-autoshow-idle-delay))))
@@ -874,7 +875,7 @@ See the Commentary section for `popup' implementation."
       (timer-set-idle-time langtool-autoshow--timer
                            langtool-autoshow--current-idle-delay t)))))
 
-(defun langtool-autoshow--cleanup-timer ()
+(defun langtool-autoshow-cleanup-timer-maybe ()
   (unless (langtool-working-p)
     (when (timerp langtool-autoshow--timer)
       (cancel-timer langtool-autoshow--timer)
