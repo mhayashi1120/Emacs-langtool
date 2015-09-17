@@ -95,7 +95,7 @@
 ;;     M-x langtool-check-done
 
 ;; * Show LanguageTool report automatically by `popup'
-;;   This come from:
+;;   This idea come from:
 ;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
 ;;
 ;;     (defun langtool-autoshow-default-popup (message)
