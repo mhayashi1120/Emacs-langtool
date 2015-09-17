@@ -113,9 +113,37 @@
   :prefix "langtool-"
   :group 'applications)
 
+;;;
+;;; Variables / Faces
+;;;
+
+;;
+;; constants
+;;
+
+(defconst langtool-output-regexp
+  (eval-when-compile
+    (concat
+     "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
+     "Message: \\(.*\\)\n"
+     "\\(?:Suggestion: \\(.*\\)\n\\)?"
+     ;; As long as i can read
+     ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
+     "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
+     "\n?"                              ; last result have no new-line
+     )))
+
+;;
+;; externals
+;;
+
 (defvar current-prefix-arg)
 (defvar unread-command-events)
 (defvar locale-language-names)
+
+;;
+;; faces
+;;
 
 (defface langtool-errline
   '((((class color) (background dark)) (:background "Firebrick4"))
@@ -123,6 +151,16 @@
     (t (:bold t)))
   "Face used for marking error lines."
   :group 'langtool)
+
+(defface langtool-correction-face
+  '((((class mono)) (:inverse-video t :bold t :underline t))
+    (t (:background "red1" :foreground "yellow" :bold t)))
+  "Face used to visualize correction."
+  :group 'langtool)
+
+;;
+;; customize variables
+;;
 
 (defcustom langtool-java-bin "java"
   "Executing java command."
@@ -164,23 +202,15 @@ String that separated by comma or list of string.
           (list string)
           string))
 
+;;
+;; local variables
+;;
+
 (defvar langtool-local-disabled-rules nil)
 (make-variable-buffer-local 'langtool-local-disabled-rules)
 
 (defvar langtool-temp-file nil)
 (make-variable-buffer-local 'langtool-temp-file)
-
-(defconst langtool-output-regexp
-  (eval-when-compile
-    (concat
-     "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
-     "Message: \\(.*\\)\n"
-     "\\(?:Suggestion: \\(.*\\)\n\\)?"
-     ;; As long as i can read
-     ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
-     "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
-     "\n?"                              ; last result have no new-line
-     )))
 
 (defvar langtool-buffer-process nil)
 (make-variable-buffer-local 'langtool-buffer-process)
@@ -191,150 +221,21 @@ String that separated by comma or list of string.
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 
+(defvar langtool--debug nil)
+
+(defvar langtool--correction-keys
+  [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
+
+;;;
+;;; Internal functions
+;;;
+
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
     (funcall 'region-active-p))
    (t
     (and transient-mark-mode mark-active))))
-
-(defun langtool-goto-next-error ()
-  "Obsoleted function. Should use `langtool-correct-buffer'.
-Goto next error."
-  (interactive)
-  (let ((overlays (langtool--overlays-region (point) (point-max))))
-    (langtool--goto-error
-     overlays
-     (lambda (ov) (< (point) (overlay-start ov))))))
-
-(defun langtool-goto-previous-error ()
-  "Obsoleted function. Should use `langtool-correct-buffer'.
-Goto previous error."
-  (interactive)
-  (let ((overlays (langtool--overlays-region (point-min) (point))))
-    (langtool--goto-error
-     (reverse overlays)
-     (lambda (ov) (< (overlay-end ov) (point))))))
-
-(defun langtool-show-message-at-point ()
-  "Show error details at point"
-  (interactive)
-  (let ((msgs (langtool--current-error-messages)))
-    (if (null msgs)
-        (message "No errors")
-      (let ((buf (get-buffer-create langtool-error-buffer-name)))
-        (with-current-buffer buf
-          (erase-buffer)
-          (mapc
-           (lambda (msg) (insert msg "\n"))
-           msgs))
-        (save-window-excursion
-          (display-buffer buf)
-          (let* ((echo-keystrokes)
-                 (event (read-event)))
-            (setq unread-command-events (list event))))))))
-
-(defun langtool-check-done ()
-  "Finish LanguageTool process and cleanup existing colorized texts."
-  (interactive)
-  (when langtool-buffer-process
-    (delete-process langtool-buffer-process))
-  (kill-local-variable 'langtool-buffer-process)
-  (kill-local-variable 'langtool-mode-line-message)
-  (kill-local-variable 'langtool-local-disabled-rules)
-  (langtool--clear-buffer-overlays)
-  (message "Cleaned up LanguageTool."))
-
-;;;###autoload
-(defalias 'langtool-check 'langtool-check-buffer)
-
-;;;###autoload
-(defun langtool-check-buffer (&optional lang)
-  "Check context current buffer and light up errors.
-Optional \\[universal-argument] read LANG name.
-
-You can change the `langtool-default-language' to apply all session.
-Restrict to selection when region is activated.
-"
-  (interactive
-   (when current-prefix-arg
-     (list (langtool-read-lang-name))))
-  (langtool--check-command)
-  ;; probablly ok...
-  (when (listp mode-line-process)
-    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
-  (let* ((file (buffer-file-name))
-         (region-p (langtool-region-active-p))
-         (begin (and region-p (region-beginning)))
-         (finish (and region-p (region-end))))
-    (when region-p
-      (deactivate-mark))
-    (unless langtool-temp-file
-      (setq langtool-temp-file (make-temp-file "langtool-")))
-    (when (or (null file) (buffer-modified-p) region-p)
-      (save-restriction
-        (widen)
-        (let ((coding-system-for-write buffer-file-coding-system))
-          (write-region begin finish langtool-temp-file nil 'no-msg))
-        (setq file langtool-temp-file)))
-    ;; clear previous check
-    (langtool--clear-buffer-overlays)
-    (let ((command langtool-java-bin)
-          args)
-      (setq args (list "-c" (langtool--java-coding-system buffer-file-coding-system)
-                       "-l" (or lang langtool-default-language)
-                       "-d" (langtool--disabled-rules)))
-      (if langtool-java-classpath
-          (setq args (append (list "-cp" langtool-java-classpath
-                                   "org.languagetool.commandline.Main")
-                             args))
-        (setq args (append
-                    (list "-jar" (expand-file-name langtool-language-tool-jar))
-                    args)))
-      (when langtool-mother-tongue
-        (setq args (append args (list "-m" langtool-mother-tongue))))
-      (setq args (append args (list file)))
-      (langtool--debug "Command" "%s: %s" command args)
-      (let* ((buffer (langtool--process-create-buffer))
-             (proc (apply 'start-process "LanguageTool" buffer command args)))
-        (set-process-filter proc 'langtool--process-filter)
-        (set-process-sentinel proc 'langtool--process-sentinel)
-        (process-put proc 'langtool-source-buffer (current-buffer))
-        (process-put proc 'langtool-region-begin begin)
-        (process-put proc 'langtool-region-finish finish)
-        (setq langtool-buffer-process proc)
-        (setq langtool-mode-line-message
-              (list " LanguageTool"
-                    (propertize ":run" 'face compilation-info-face)))))))
-
-;;;###autoload
-(defun langtool-switch-default-language (lang)
-  "Switch `langtool-read-lang-name' to LANG"
-  (interactive (list (langtool-read-lang-name)))
-  (setq langtool-default-language lang)
-  (message "Now default language is `%s'" lang))
-
-(defun langtool-correct-buffer ()
-  "Execute interactive correction after `langtool-check'"
-  (interactive)
-  (let ((ovs (langtool--overlays-region (point-min) (point-max))))
-    (if (null ovs)
-        (message "No error found. %s"
-                 (substitute-command-keys
-                  (concat
-                   "Type \\[langtool-check-done] to finish checking "
-                   "or type \\[langtool-check] to re-check buffer")))
-      (barf-if-buffer-read-only)
-      (langtool--correction ovs))))
-
-(defvar langtool--debug nil)
-(defun langtool-toggle-debug ()
-  "Toggle LanguageTool debugging."
-  (interactive)
-  (setq langtool--debug (not langtool--debug))
-  (if langtool--debug
-      (message "LanguageTool debug ON.")
-    (message "LanguageTool debug off.")))
 
 (defun langtool--debug (key fmt &rest args)
   (when langtool--debug
@@ -763,15 +664,6 @@ Restrict to selection when region is activated.
            if (overlay-get o 'face)
            return o))
 
-(defvar langtool--correction-keys
-  [?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9])
-
-(defface langtool-correction-face
-  '((((class mono)) (:inverse-video t :bold t :underline t))
-    (t (:background "red1" :foreground "yellow" :bold t)))
-  "Face used to visualize correction."
-  :group 'langtool)
-
 (defun langtool--correction-popup (msg suggests)
   (let ((buf (langtool--correction-buffer)))
     (delete-other-windows)
@@ -837,6 +729,147 @@ Restrict to selection when region is activated.
                                (concat "\\`" (regexp-quote lang)) x))
                   supported-langs))
       (car mems)))))
+
+;;;
+;;; interactive commands
+;;;
+
+(defun langtool-goto-next-error ()
+  "Obsoleted function. Should use `langtool-correct-buffer'.
+Goto next error."
+  (interactive)
+  (let ((overlays (langtool--overlays-region (point) (point-max))))
+    (langtool--goto-error
+     overlays
+     (lambda (ov) (< (point) (overlay-start ov))))))
+
+(defun langtool-goto-previous-error ()
+  "Obsoleted function. Should use `langtool-correct-buffer'.
+Goto previous error."
+  (interactive)
+  (let ((overlays (langtool--overlays-region (point-min) (point))))
+    (langtool--goto-error
+     (reverse overlays)
+     (lambda (ov) (< (overlay-end ov) (point))))))
+
+(defun langtool-show-message-at-point ()
+  "Show error details at point"
+  (interactive)
+  (let ((msgs (langtool--current-error-messages)))
+    (if (null msgs)
+        (message "No errors")
+      (let ((buf (get-buffer-create langtool-error-buffer-name)))
+        (with-current-buffer buf
+          (erase-buffer)
+          (mapc
+           (lambda (msg) (insert msg "\n"))
+           msgs))
+        (save-window-excursion
+          (display-buffer buf)
+          (let* ((echo-keystrokes)
+                 (event (read-event)))
+            (setq unread-command-events (list event))))))))
+
+(defun langtool-check-done ()
+  "Finish LanguageTool process and cleanup existing colorized texts."
+  (interactive)
+  (when langtool-buffer-process
+    (delete-process langtool-buffer-process))
+  (kill-local-variable 'langtool-buffer-process)
+  (kill-local-variable 'langtool-mode-line-message)
+  (kill-local-variable 'langtool-local-disabled-rules)
+  (langtool--clear-buffer-overlays)
+  (message "Cleaned up LanguageTool."))
+
+;;;###autoload
+(defalias 'langtool-check 'langtool-check-buffer)
+
+;;;###autoload
+(defun langtool-check-buffer (&optional lang)
+  "Check context current buffer and light up errors.
+Optional \\[universal-argument] read LANG name.
+
+You can change the `langtool-default-language' to apply all session.
+Restrict to selection when region is activated.
+"
+  (interactive
+   (when current-prefix-arg
+     (list (langtool-read-lang-name))))
+  (langtool--check-command)
+  ;; probablly ok...
+  (when (listp mode-line-process)
+    (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
+  (let* ((file (buffer-file-name))
+         (region-p (langtool-region-active-p))
+         (begin (and region-p (region-beginning)))
+         (finish (and region-p (region-end))))
+    (when region-p
+      (deactivate-mark))
+    (unless langtool-temp-file
+      (setq langtool-temp-file (make-temp-file "langtool-")))
+    (when (or (null file) (buffer-modified-p) region-p)
+      (save-restriction
+        (widen)
+        (let ((coding-system-for-write buffer-file-coding-system))
+          (write-region begin finish langtool-temp-file nil 'no-msg))
+        (setq file langtool-temp-file)))
+    ;; clear previous check
+    (langtool--clear-buffer-overlays)
+    (let ((command langtool-java-bin)
+          args)
+      (setq args (list "-c" (langtool--java-coding-system buffer-file-coding-system)
+                       "-l" (or lang langtool-default-language)
+                       "-d" (langtool--disabled-rules)))
+      (if langtool-java-classpath
+          (setq args (append (list "-cp" langtool-java-classpath
+                                   "org.languagetool.commandline.Main")
+                             args))
+        (setq args (append
+                    (list "-jar" (expand-file-name langtool-language-tool-jar))
+                    args)))
+      (when langtool-mother-tongue
+        (setq args (append args (list "-m" langtool-mother-tongue))))
+      (setq args (append args (list file)))
+      (langtool--debug "Command" "%s: %s" command args)
+      (let* ((buffer (langtool--process-create-buffer))
+             (proc (apply 'start-process "LanguageTool" buffer command args)))
+        (set-process-filter proc 'langtool--process-filter)
+        (set-process-sentinel proc 'langtool--process-sentinel)
+        (process-put proc 'langtool-source-buffer (current-buffer))
+        (process-put proc 'langtool-region-begin begin)
+        (process-put proc 'langtool-region-finish finish)
+        (setq langtool-buffer-process proc)
+        (setq langtool-mode-line-message
+              (list " LanguageTool"
+                    (propertize ":run" 'face compilation-info-face)))))))
+
+;;;###autoload
+(defun langtool-switch-default-language (lang)
+  "Switch `langtool-read-lang-name' to LANG"
+  (interactive (list (langtool-read-lang-name)))
+  (setq langtool-default-language lang)
+  (message "Now default language is `%s'" lang))
+
+(defun langtool-correct-buffer ()
+  "Execute interactive correction after `langtool-check'"
+  (interactive)
+  (let ((ovs (langtool--overlays-region (point-min) (point-max))))
+    (if (null ovs)
+        (message "No error found. %s"
+                 (substitute-command-keys
+                  (concat
+                   "Type \\[langtool-check-done] to finish checking "
+                   "or type \\[langtool-check] to re-check buffer")))
+      (barf-if-buffer-read-only)
+      (langtool--correction ovs))))
+
+(defun langtool-toggle-debug ()
+  "Toggle LanguageTool debugging."
+  (interactive)
+  (setq langtool--debug (not langtool--debug))
+  (if langtool--debug
+      (message "LanguageTool debug ON.")
+    (message "LanguageTool debug off.")))
 
 ;; initialize custom variables guessed from environment.
 (let ((mt (langtool--guess-language)))
