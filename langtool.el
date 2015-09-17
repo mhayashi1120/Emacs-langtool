@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.4.3
+;; Version: 1.5.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -93,6 +93,17 @@
 ;; * To finish checking. All langtool marker is removed.
 ;;
 ;;     M-x langtool-check-done
+
+;; * Show LanguageTool report automatically by `popup'
+;;
+;;     (defun langtool-autoshow-default-popup (message)
+;;       (when (require 'popup nil t)
+;;         ;; Do not interupt current popup
+;;         (unless popup-instances
+;;           (popup-tip message))))
+;;
+;;     (setq langtool-autoshow-message-function
+;;           'langtool-autoshow-default-popup)
 
 ;;; TODO:
 
@@ -202,18 +213,20 @@ String that separated by comma or list of string.
           (list string)
           string))
 
-(defcustom langtool-error-exists-hook nil
-  "TODO"
+(defcustom langtool-error-exists-hook
+  '(langtool-autoshow--schedule-timer)
+  "Hook run after LanguageTool process found any error(s)."
   :group 'langtool
   :type 'hook)
 
 (defcustom langtool-noerror-hook nil
-  "TODO"
+  "Hook run after LanguageTool report no error."
   :group 'langtool
   :type 'hook)
 
-(defcustom langtool-finish-hook nil
-  "TODO"
+(defcustom langtool-finish-hook
+  '(langtool-autoshow--cleanup-timer)
+  "Hook run after cleanup buffer."
   :group 'langtool
   :type 'hook)
 
@@ -600,7 +613,8 @@ String that separated by comma or list of string.
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
   (kill-local-variable 'langtool-local-disabled-rules)
-  (langtool--clear-buffer-overlays))
+  (langtool--clear-buffer-overlays)
+  (run-hooks 'langtool-finish-hook))
 
 ;;FIXME
 ;; http://java.sun.com/j2se/1.5.0/ja/docs/ja/guide/intl/encoding.doc.html
@@ -813,8 +827,8 @@ String that separated by comma or list of string.
 (defcustom langtool-autoshow-message-function
   'langtool-autoshow-default-message
   "One argument function of displaying error message reported by langtool.
-`langtool-autoshow-default-popup' / `langtool-autoshow-default-message' are
-the sample implementations."
+`langtool-autoshow-default-message' are the sample implementations.
+See the Commentary section for `popup' implementation."
   :group 'langtool
   :type 'function)
 
@@ -825,13 +839,8 @@ the sample implementations."
 
 (defvar langtool-autoshow--current-idle-delay nil)
 
-(defvar langtool-autoshow--timer nil)
-
-(defun langtool-autoshow-default-popup (message)
-  (when (require 'popup nil t)
-    ;; Do not interupt current popup
-    (unless popup-instances
-      (popup-tip message))))
+(defvar langtool-autoshow--timer nil
+  "Hold idle timer watch every LanguageTool processed buffer.")
 
 (defun langtool-autoshow-default-message (message)
   ;; Do not interupt current message
@@ -855,10 +864,9 @@ the sample implementations."
                  (memq langtool-autoshow--timer timer-idle-list))
       (setq langtool-autoshow--timer
             (run-with-idle-timer
-             langtool-autoshow--current-idle-delay t
-             'langtool-autoshow--maybe)))
+             delay t 'langtool-autoshow--maybe)))
     (cond
-     ((= langtool-autoshow--current-idle-delay delay))
+     ((equal langtool-autoshow--current-idle-delay delay))
      (t
       (setq langtool-autoshow--current-idle-delay delay)
       (timer-set-idle-time langtool-autoshow--timer
@@ -866,8 +874,9 @@ the sample implementations."
 
 (defun langtool-autoshow--cleanup-timer ()
   (unless (langtool-working-p)
-    (cancel-timer langtool-autoshow--timer)
-    (setq langtool-autoshow--timer nil)))
+    (when (timerp langtool-autoshow--timer)
+      (cancel-timer langtool-autoshow--timer)
+      (setq langtool-autoshow--timer nil))))
 
 ;;;
 ;;; interactive commands
