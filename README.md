@@ -83,10 +83,31 @@ C-u M-x langtool-check
 M-x langtool-correct-buffer
 ```
 
-* Go to warning point and
+* Go to warning point you can see a report from LanguageTool.
+  Otherwise:
 
 ```
 M-x langtool-show-message-at-point
+```
+
+* Show LanguageTool report automatically by `popup`
+  This idea come from:
+  http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
+
+```
+(defun langtool-autoshow-detail-popup (overlays)
+  (when (require 'popup nil t)
+    ;; Do not interrupt current popup
+    (unless (or popup-instances
+                ;; suppress popup after type `C-g` .
+                (memq last-command '(keyboard-quit)))
+      (let ((msg (langtool-details-error-message overlays)))
+        (popup-tip msg)))))
+```
+
+```
+(setq langtool-autoshow-message-function
+      'langtool-autoshow-detail-popup)
 ```
 
 * To finish checking. All langtool marker is removed.
