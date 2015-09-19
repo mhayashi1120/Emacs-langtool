@@ -1,7 +1,6 @@
 EMACS = emacs
 
-check: compile
-	$(MAKE) print-encoding
+check: compile print-encoding
 	$(EMACS) -q -batch -l langtool.el -l .test-init.el -l langtool-test.el \
 		-f ert-run-tests-batch-and-exit
 	$(EMACS) -q -batch -l langtool.elc -l .test-init.el -l langtool-test.el \
