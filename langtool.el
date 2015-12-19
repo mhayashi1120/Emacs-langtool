@@ -507,6 +507,7 @@ String that separated by comma or list of string.
           (finish (process-get proc 'langtool-region-finish))
           n-tuple)
       (goto-char min)
+      (delete-trailing-whitespace)
       (while (re-search-forward langtool-output-regexp nil t)
         (let* ((line (string-to-number (match-string 1)))
                (column (1- (string-to-number (match-string 2))))
