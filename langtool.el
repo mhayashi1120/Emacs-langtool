@@ -141,13 +141,13 @@
 (defconst langtool-output-regexp
   (eval-when-compile
     (concat
-     "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\n"
-     "Message: \\(.*\\)\n"
-     "\\(?:Suggestion: \\(.*\\)\n\\)?"
+     "^[0-9]+\\.) Line \\([0-9]+\\), column \\([0-9]+\\), Rule ID: \\(.*\\)\r?\n"
+     "Message: \\(.*\\)\r?\n"
+     "\\(?:Suggestion: \\(.*\\)\r?\n\\)?"
      ;; As long as i can read
      ;; src/dev/de/danielnaber/languagetool/dev/wikipedia/OutputDumpHandler.java
-     "\\(\\(?:.*\\)\n\\(?:[ ^]+\\)\\)\n"
-     "\n?"                              ; last result have no new-line
+     "\\(\\(?:.*\\)\r?\n\\(?:[ ^]+\\)\\)\r?\n"
+     "\r?\n?"                              ; last result have no new-line
      )))
 
 ;;
