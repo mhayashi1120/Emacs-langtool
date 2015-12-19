@@ -571,6 +571,20 @@ String that separated by comma or list of string.
                              "\\)")))))
       regexp)))
 
+
+(defun langtool--file-name (path)
+  "Correct the file name depending on the underlying platform.
+
+PATH: The file-name path to be corrected.
+
+Currently corrects the file-name-path when running under Cygwin."
+  (if (eq system-type 'cygwin)
+      (replace-regexp-in-string "[ \n\r]*\\'" ""
+                                (shell-command-to-string
+                                 (concat "cygpath --windows " path)))
+    path))
+
+
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
@@ -587,11 +601,12 @@ String that separated by comma or list of string.
                                  "org.languagetool.commandline.Main")
                            args))
       (setq args (append
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "-jar" (langtool--file-name
+                                (expand-file-name langtool-language-tool-jar)))
                   args)))
     (when langtool-mother-tongue
       (setq args (append args (list "-m" langtool-mother-tongue))))
-    (setq args (append args (list file)))
+    (setq args (append args (list (langtool--file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
            (proc (apply 'start-process "LanguageTool" buffer command args)))
