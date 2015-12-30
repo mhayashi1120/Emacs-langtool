@@ -586,10 +586,15 @@ Currently corrects the file-name-path when running under Cygwin."
   (cond
    ((eq system-type 'cygwin)
     (with-temp-buffer
-      (process-file "cygpath" nil t nil "--windows" path)
+      (call-process "cygpath" nil t nil "--windows" path)
       (langtool--chomp (buffer-string))))
    (t
     path)))
+
+(defcustom langtool-process-coding-system nil
+  "TODO: experimental LanguageTool process coding-system"
+  :group 'langtool
+  :type 'symbol)
 
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
@@ -615,7 +620,8 @@ Currently corrects the file-name-path when running under Cygwin."
     (setq args (append args (list (langtool--process-file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
-           (proc (apply 'start-process "LanguageTool" buffer command args)))
+           (proc (let ((coding-system-for-read langtool-process-coding-system))
+                   (apply 'start-process "LanguageTool" buffer command args))))
       (set-process-filter proc 'langtool--process-filter)
       (set-process-sentinel proc 'langtool--process-sentinel)
       (process-put proc 'langtool-source-buffer (current-buffer))
