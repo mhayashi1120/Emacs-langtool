@@ -1055,10 +1055,20 @@ Restrict to selection when region is activated.
       (deactivate-mark))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
-    (when (or (null file) (buffer-modified-p) region-p)
+    ;; create temporary file to pass the text contents to LanguageTool
+    (when (or (null file)
+              (buffer-modified-p)
+              region-p
+              ;; 1 is dos EOL style, this must convert to unix
+              (eq (coding-system-eol-type buffer-file-coding-system) 1))
       (save-restriction
         (widen)
-        (let ((coding-system-for-write buffer-file-coding-system))
+        (let ((coding-system-for-write
+               ;; convert EOL style to unix (LF).
+               ;; dos (CR-LF) style EOL may destroy position of marker.
+               (coding-system-change-eol-conversion
+                buffer-file-coding-system 'unix)))
+          ;; BEGIN nil means entire buffer
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
     (langtool--invoke-process file begin finish lang)
