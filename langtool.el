@@ -288,6 +288,11 @@ String that separated by comma or list of string.
         (insert "---------- [" key "] ----------\n")
         (insert (apply 'format fmt args) "\n")))))
 
+(defun langtool--chomp (s)
+  (if (string-match "\\(?:\\(\r\n\\)+\\|\\(\n\\)+\\)\\'" s)
+      (substring s 0 (match-beginning 0))
+    s))
+
 ;;
 ;; handle error overlay
 ;;
@@ -572,18 +577,19 @@ String that separated by comma or list of string.
       regexp)))
 
 
-(defun langtool--file-name (path)
+(defun langtool--process-file-name (path)
   "Correct the file name depending on the underlying platform.
 
 PATH: The file-name path to be corrected.
 
 Currently corrects the file-name-path when running under Cygwin."
-  (if (eq system-type 'cygwin)
-      (replace-regexp-in-string "[ \n\r]*\\'" ""
-                                (shell-command-to-string
-                                 (concat "cygpath --windows " path)))
-    path))
-
+  (cond
+   ((eq system-type 'cygwin)
+    (with-temp-buffer
+      (process-file "cygpath" nil t nil "--windows" path)
+      (langtool--chomp (buffer-string))))
+   (t
+    path)))
 
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
@@ -601,12 +607,12 @@ Currently corrects the file-name-path when running under Cygwin."
                                  "org.languagetool.commandline.Main")
                            args))
       (setq args (append
-                  (list "-jar" (langtool--file-name
+                  (list "-jar" (langtool--process-file-name
                                 (expand-file-name langtool-language-tool-jar)))
                   args)))
     (when langtool-mother-tongue
       (setq args (append args (list "-m" langtool-mother-tongue))))
-    (setq args (append args (list (langtool--file-name file))))
+    (setq args (append args (list (langtool--process-file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
            (proc (apply 'start-process "LanguageTool" buffer command args)))
