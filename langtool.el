@@ -273,6 +273,10 @@ String that separated by comma or list of string.
 ;; basic functions
 ;;
 
+(defmacro langtool--with-java-environ (&rest form)
+  `(let ((coding-system-for-read langtool-process-coding-system))
+     (progn ,@form)))
+
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
@@ -583,18 +587,26 @@ String that separated by comma or list of string.
 PATH: The file-name path to be corrected.
 
 Currently corrects the file-name-path when running under Cygwin."
+  (setq path (expand-file-name path))
   (cond
    ((eq system-type 'cygwin)
+    ;; no need to catch error. (e.g. cygpath is not found)
+    ;; this failure means LanguageTools is not working completely.
     (with-temp-buffer
       (call-process "cygpath" nil t nil "--windows" path)
       (langtool--chomp (buffer-string))))
    (t
     path)))
 
-(defcustom langtool-process-coding-system nil
-  "TODO: experimental LanguageTool process coding-system"
+(defcustom langtool-process-coding-system
+  (cond
+   ((eq system-type 'cygwin)
+    'dos)
+   (t nil))
+  "LanguageTool process coding-system.
+Ordinary no need to change this."
   :group 'langtool
-  :type 'symbol)
+  :type 'coding-system)
 
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
@@ -612,16 +624,15 @@ Currently corrects the file-name-path when running under Cygwin."
                                  "org.languagetool.commandline.Main")
                            args))
       (setq args (append
-                  (list "-jar" (langtool--process-file-name
-                                (expand-file-name langtool-language-tool-jar)))
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
                   args)))
     (when langtool-mother-tongue
       (setq args (append args (list "-m" langtool-mother-tongue))))
     (setq args (append args (list (langtool--process-file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
-           (proc (let ((coding-system-for-read langtool-process-coding-system))
-                   (apply 'start-process "LanguageTool" buffer command args))))
+           (proc (langtool--with-java-environ
+                  (apply 'start-process "LanguageTool" buffer command args))))
       (set-process-filter proc 'langtool--process-filter)
       (set-process-sentinel proc 'langtool--process-sentinel)
       (process-put proc 'langtool-source-buffer (current-buffer))
@@ -751,13 +762,13 @@ Currently corrects the file-name-path when running under Cygwin."
      (t
       (setq args (append
                   args
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
                   (list "--list")))))
     (with-temp-buffer
       (when (and command args
                  (executable-find command)
-                 ;;TODO process coding
-                 (= (apply 'call-process command nil t nil args) 0))
+                 (= (langtool--with-java-environ
+                     (apply 'call-process command nil t nil args) 0)))
         (goto-char (point-min))
         (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
           (setq res (cons (match-string 1) res)))
