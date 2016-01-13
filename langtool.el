@@ -273,6 +273,10 @@ String that separated by comma or list of string.
 ;; basic functions
 ;;
 
+(defmacro langtool--with-java-environ (&rest form)
+  `(let ((coding-system-for-read langtool-process-coding-system))
+     (progn ,@form)))
+
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
@@ -287,6 +291,11 @@ String that separated by comma or list of string.
         (goto-char (point-max))
         (insert "---------- [" key "] ----------\n")
         (insert (apply 'format fmt args) "\n")))))
+
+(defun langtool--chomp (s)
+  (if (string-match "\\(?:\\(\r\n\\)+\\|\\(\n\\)+\\)\\'" s)
+      (substring s 0 (match-beginning 0))
+    s))
 
 ;;
 ;; handle error overlay
@@ -571,6 +580,34 @@ String that separated by comma or list of string.
                              "\\)")))))
       regexp)))
 
+
+(defun langtool--process-file-name (path)
+  "Correct the file name depending on the underlying platform.
+
+PATH: The file-name path to be corrected.
+
+Currently corrects the file-name-path when running under Cygwin."
+  (setq path (expand-file-name path))
+  (cond
+   ((eq system-type 'cygwin)
+    ;; no need to catch error. (e.g. cygpath is not found)
+    ;; this failure means LanguageTools is not working completely.
+    (with-temp-buffer
+      (call-process "cygpath" nil t nil "--windows" path)
+      (langtool--chomp (buffer-string))))
+   (t
+    path)))
+
+(defcustom langtool-process-coding-system
+  (cond
+   ((eq system-type 'cygwin)
+    'dos)
+   (t nil))
+  "LanguageTool process coding-system.
+Ordinary no need to change this."
+  :group 'langtool
+  :type 'coding-system)
+
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
@@ -587,14 +624,15 @@ String that separated by comma or list of string.
                                  "org.languagetool.commandline.Main")
                            args))
       (setq args (append
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
                   args)))
     (when langtool-mother-tongue
       (setq args (append args (list "-m" langtool-mother-tongue))))
-    (setq args (append args (list file)))
+    (setq args (append args (list (langtool--process-file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
-           (proc (apply 'start-process "LanguageTool" buffer command args)))
+           (proc (langtool--with-java-environ
+                  (apply 'start-process "LanguageTool" buffer command args))))
       (set-process-filter proc 'langtool--process-filter)
       (set-process-sentinel proc 'langtool--process-sentinel)
       (process-put proc 'langtool-source-buffer (current-buffer))
@@ -724,12 +762,13 @@ String that separated by comma or list of string.
      (t
       (setq args (append
                   args
-                  (list "-jar" (expand-file-name langtool-language-tool-jar))
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
                   (list "--list")))))
     (with-temp-buffer
       (when (and command args
                  (executable-find command)
-                 (= (apply 'call-process command nil t nil args) 0))
+                 (= (langtool--with-java-environ
+                     (apply 'call-process command nil t nil args) 0)))
         (goto-char (point-min))
         (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
           (setq res (cons (match-string 1) res)))
@@ -1034,10 +1073,20 @@ Restrict to selection when region is activated.
       (deactivate-mark))
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
-    (when (or (null file) (buffer-modified-p) region-p)
+    ;; create temporary file to pass the text contents to LanguageTool
+    (when (or (null file)
+              (buffer-modified-p)
+              region-p
+              ;; 1 is dos EOL style, this must convert to unix
+              (eq (coding-system-eol-type buffer-file-coding-system) 1))
       (save-restriction
         (widen)
-        (let ((coding-system-for-write buffer-file-coding-system))
+        (let ((coding-system-for-write
+               ;; convert EOL style to unix (LF).
+               ;; dos (CR-LF) style EOL may destroy position of marker.
+               (coding-system-change-eol-conversion
+                buffer-file-coding-system 'unix)))
+          ;; BEGIN nil means entire buffer
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
     (langtool--invoke-process file begin finish lang)
