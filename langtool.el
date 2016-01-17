@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.5.0
+;; Version: 1.5.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -547,11 +547,13 @@ String that separated by comma or list of string.
                  (langtool--create-overlay tuple))
                (nreverse n-tuple)))))))))
 
-;;FIXME sometimes LanguageTool says wrong column.
+;;FIXME sometimes LanguageTool reports wrong column.
 (defun langtool--pointed-context-regexp (message)
   (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
     (let* ((msg1 (match-string 1 message))
+           ;; calculate marker "^" start at column
            (pre (length (match-string 2 message)))
+           ;; "^" marker length
            (len (length (match-string 3 message)))
            (end (+ pre len))
            (sentence (substring msg1 pre end))
