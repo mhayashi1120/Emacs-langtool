@@ -4,7 +4,7 @@ language: generic
 sudo: true
 env:
   matrix:
-    - EMACS=emacs23
+#    - EMACS=emacs23
     - EMACS=emacs24
     - EMACS=emacs-snapshot
   global:
@@ -12,7 +12,8 @@ env:
 
 before_install:
   - git submodule --quiet update --init --recursive
-
+  - wget "https://languagetool.org/download/LanguageTool-3.2.zip"
+  - echo '(setq langtool-language-tool-jar "./LanguageTool-3.2.zip")' > .test-init.el
 # This install script come from https://github.com/rolandwalker/emacs-travis
 install:
   - if [ "$EMACS" = 'emacs23' ]; then
