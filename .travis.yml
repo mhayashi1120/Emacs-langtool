@@ -37,6 +37,5 @@ install:
 
 script:
   - uname -a
-  - emacs --version
   - make check
 
