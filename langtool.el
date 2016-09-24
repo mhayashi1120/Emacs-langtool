@@ -1110,6 +1110,32 @@ Goto previous error."
 ;;;###autoload
 (defalias 'langtool-check 'langtool-check-buffer)
 
+(defun langtool--clear-file (file &optional base-major-mode)
+  "Clear the temporary file, removing commented text"
+  (save-current-buffer
+      (print file)
+      (print base-major-mode)
+      (find-file file)
+      (if major-mode
+	  (funcall base-major-mode))
+      ;; Remove comments on temp file
+      (goto-char (point-min))
+      (while (not (equal (point) (point-max)))
+	(if (and (nth 4 (syntax-ppss)) (not (equal (point) (line-end-position))))
+	    (progn
+	      (delete-char 1)
+	      (insert " "))
+	  (forward-char)))
+      ;; ;; Remove according to regexp (only for tex...)
+      ;; (goto-char (point-min))
+      ;; (while (re-search-forward "\\(\\\\[^}]+{[^}]*}\\|\\\\[^{\s]+\\)" (point-max) t)
+      ;; 	(replace-match "     ")
+      ;; 	(message "Found one")
+      ;; 	)
+      ;; Save and clean
+      (save-buffer)
+      (kill-buffer)))
+
 ;;;###autoload
 (defun langtool-check-buffer (&optional lang)
   "Check context current buffer and light up errors.
@@ -1132,23 +1158,19 @@ Restrict to selection when region is activated.
     (unless langtool-temp-file
       (setq langtool-temp-file (make-temp-file "langtool-")))
     ;; create temporary file to pass the text contents to LanguageTool
-    (when (or (null file)
-              (buffer-modified-p)
-              region-p
-              ;; 1 is dos EOL style, this must convert to unix
-              (eq (coding-system-eol-type buffer-file-coding-system) 1))
-      (save-restriction
-        (widen)
-        (let ((coding-system-for-write
-               ;; convert EOL style to unix (LF).
-               ;; dos (CR-LF) style EOL may destroy position of marker.
-               (coding-system-change-eol-conversion
-                buffer-file-coding-system 'unix)))
-          ;; BEGIN nil means entire buffer
-          (write-region begin finish langtool-temp-file nil 'no-msg))
-        (setq file langtool-temp-file)))
-    (langtool--invoke-process file begin finish lang)
-    (force-mode-line-update)))
+    (save-restriction
+      (widen)
+      (let ((coding-system-for-write
+	     ;; convert EOL style to unix (LF).
+	     ;; dos (CR-LF) style EOL may destroy position of marker.
+	     (coding-system-change-eol-conversion
+	      buffer-file-coding-system 'unix)))
+	;; BEGIN nil means entire buffer
+	(write-region begin finish langtool-temp-file nil 'no-msg))
+      (setq file langtool-temp-file))
+     (langtool--clear-file file major-mode)
+     (langtool--invoke-process file begin finish lang)
+     (force-mode-line-update)))
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
