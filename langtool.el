@@ -1110,11 +1110,19 @@ Goto previous error."
 ;;;###autoload
 (defalias 'langtool-check 'langtool-check-buffer)
 
+(defcustom langtool-cleanup-latex
+  nil
+  "If t, remove comments, commands and maths from latex buffer before sending
+them to langtool."
+  :type 'boolean
+  :group 'langtool)
+
 (defcustom langtool-cleanup-regex
   ""
   "Regular expression used to clean buffers before sending them to langtool.
 You can use this to remove part of the buffer you don't want to be spell checked."
-  :type 'regexp)
+  :type 'regexp
+  :group 'langtool)
 
 (defun langtool--clear-regex (regex)
   "Replace the strings matched by REGEX by spaces in the current buffer."
@@ -1147,7 +1155,7 @@ BASE-MAJOR-MODE is the major mode to use for FILE."
             (insert " "))
         (forward-char)))
     ;; Latex specific cleaning
-    (when (derived-mode-p 'latex-mode)
+    (when (and (derived-mode-p 'latex-mode) langtool-cleanup-latex)
       (langtool--clear-regex "\\$[^$]+\\$")
       (langtool--clear-regex "\\\\[[^]]+\\\\]")
       (langtool--clear-regex "\\\\[^\\\\{\\[ ]*\\(\\[[^]]*\\]\\)*\\({[^}]*}\\)*\\(\\[[^]]*\\]\\)*"))
