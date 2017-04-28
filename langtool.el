@@ -1110,31 +1110,53 @@ Goto previous error."
 ;;;###autoload
 (defalias 'langtool-check 'langtool-check-buffer)
 
+(defcustom langtool-cleanup-regex
+  ""
+  "Regular expression used to clean buffers before sending them to langtool.
+You can use this to remove part of the buffer you don't want to be spell checked."
+  :type 'regexp)
+
+(defun langtool--clear-regex (regex)
+  "Replace the strings matched by REGEX by spaces in the current buffer."
+  (goto-char (point-min))
+  (while (re-search-forward regex (point-max) t)
+    (let* ((match (match-data))
+           (to-replace (match-string 0))
+           (replacement (string-join
+                         (cl-loop for line in (split-string to-replace "\n")
+                                  collect (make-string (length line) ? ))
+                         "\n")))
+      (set-match-data match) ;; apparently match is overwritten by something...
+      (replace-match replacement))))
+
 (defun langtool--clear-file (file &optional base-major-mode)
-  "Clear the temporary file, removing commented text"
+  "Clear FILE to send only test to langtool.
+variable `langtool-cleanup-regex' can be used to choose what to remove.
+BASE-MAJOR-MODE is the major mode to use for FILE."
+  (message "Cleaning the buffer...")
   (save-current-buffer
-      (print file)
-      (print base-major-mode)
-      (find-file file)
-      (if major-mode
-	  (funcall base-major-mode))
-      ;; Remove comments on temp file
-      (goto-char (point-min))
-      (while (not (equal (point) (point-max)))
-	(if (and (nth 4 (syntax-ppss)) (not (equal (point) (line-end-position))))
-	    (progn
-	      (delete-char 1)
-	      (insert " "))
-	  (forward-char)))
-      ;; ;; Remove according to regexp (only for tex...)
-      ;; (goto-char (point-min))
-      ;; (while (re-search-forward "\\(\\\\[^}]+{[^}]*}\\|\\\\[^{\s]+\\)" (point-max) t)
-      ;; 	(replace-match "     ")
-      ;; 	(message "Found one")
-      ;; 	)
-      ;; Save and clean
-      (save-buffer)
-      (kill-buffer)))
+    (find-file file)
+    (if major-mode
+        (funcall base-major-mode))
+    ;; Remove comments on temp file
+    (goto-char (point-min))
+    (while (not (equal (point) (point-max)))
+      (if (and (nth 4 (syntax-ppss)) (not (equal (point) (line-end-position))))
+          (progn
+            (delete-char 1)
+            (insert " "))
+        (forward-char)))
+    ;; Latex specific cleaning
+    (when (derived-mode-p 'latex-mode)
+      (langtool--clear-regex "\\$[^$]+\\$")
+      (langtool--clear-regex "\\\\[[^]]+\\\\]")
+      (langtool--clear-regex "\\\\[^\\\\{\\[ ]*\\(\\[[^]]*\\]\\)*\\({[^}]*}\\)*\\(\\[[^]]*\\]\\)*"))
+    ;; Remove user regex if present
+    (if (not (= (length langtool-cleanup-regex) 0))
+        (langtool--clear-regex langtool-cleanup-regex))
+    ;; Save and clean
+    (save-buffer)
+    (kill-buffer)))
 
 ;;;###autoload
 (defun langtool-check-buffer (&optional lang)
@@ -1161,16 +1183,16 @@ Restrict to selection when region is activated.
     (save-restriction
       (widen)
       (let ((coding-system-for-write
-	     ;; convert EOL style to unix (LF).
-	     ;; dos (CR-LF) style EOL may destroy position of marker.
-	     (coding-system-change-eol-conversion
-	      buffer-file-coding-system 'unix)))
-	;; BEGIN nil means entire buffer
-	(write-region begin finish langtool-temp-file nil 'no-msg))
+             ;; convert EOL style to unix (LF).
+             ;; dos (CR-LF) style EOL may destroy position of marker.
+             (coding-system-change-eol-conversion
+              buffer-file-coding-system 'unix)))
+        ;; BEGIN nil means entire buffer
+        (write-region begin finish langtool-temp-file nil 'no-msg))
       (setq file langtool-temp-file))
-     (langtool--clear-file file major-mode)
-     (langtool--invoke-process file begin finish lang)
-     (force-mode-line-update)))
+    (langtool--clear-file file major-mode)
+    (langtool--invoke-process file begin finish lang)
+    (force-mode-line-update)))
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
