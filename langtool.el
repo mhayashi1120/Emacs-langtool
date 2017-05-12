@@ -310,7 +310,7 @@ String that separated by comma or list of string.
              (cons (point) (+ (point) length)))
         (and (looking-at regexp)
              (cons (match-beginning 1) (match-end 1)))
-        (let ((beg (min (line-beginning-position) (- (point) 20))))
+        (let ((beg (min (point-at-bol) (- (point) 20))))
           (cl-loop while (and (not (bobp))
                               (<= beg (point)))
                    ;; backward just sentence length to search sentence after point
@@ -332,8 +332,8 @@ String that separated by comma or list of string.
         (context (nth 7 tuple)))
     (goto-char (point-min))
     (forward-line (1- line))
-    (let ((start (line-beginning-position))
-          (end (line-end-position)))
+    (let ((start (point-at-bol))
+          (end (point-at-eol)))
       ;;  1. sketchy move to column that is indicated by LanguageTool.
       ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
       (move-to-column col)
