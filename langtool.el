@@ -336,7 +336,7 @@ String that separated by comma or list of string.
           (end (point-at-eol)))
       ;;  1. sketchy move to column that is indicated by LanguageTool.
       ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-      (move-to-column col)
+      (forward-char (1- col))
       (cl-destructuring-bind (start . end)
           (langtool--fuzzy-search context len)
         (let ((ov (make-overlay start end)))
