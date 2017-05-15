@@ -332,20 +332,18 @@ String that separated by comma or list of string.
         (context (nth 7 tuple)))
     (goto-char (point-min))
     (forward-line (1- line))
-    (let ((start (point-at-bol))
-          (end (point-at-eol)))
-      ;;  1. sketchy move to column that is indicated by LanguageTool.
-      ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-      (forward-char (1- col))
-      (cl-destructuring-bind (start . end)
-          (langtool--fuzzy-search context len)
-        (let ((ov (make-overlay start end)))
-          (overlay-put ov 'langtool-simple-message msg)
-          (overlay-put ov 'langtool-message message)
-          (overlay-put ov 'langtool-suggestions sugs)
-          (overlay-put ov 'langtool-rule-id rule-id)
-          (overlay-put ov 'priority 1)
-          (overlay-put ov 'face 'langtool-errline))))))
+    ;;  1. sketchy move to column that is indicated by LanguageTool.
+    ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
+    (forward-char (1- col))
+    (cl-destructuring-bind (start . end)
+        (langtool--fuzzy-search context len)
+      (let ((ov (make-overlay start end)))
+        (overlay-put ov 'langtool-simple-message msg)
+        (overlay-put ov 'langtool-message message)
+        (overlay-put ov 'langtool-suggestions sugs)
+        (overlay-put ov 'langtool-rule-id rule-id)
+        (overlay-put ov 'priority 1)
+        (overlay-put ov 'face 'langtool-errline)))))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
