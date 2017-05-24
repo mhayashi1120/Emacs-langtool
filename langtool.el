@@ -1158,7 +1158,9 @@ BASE-MAJOR-MODE is the major mode to use for FILE."
     (when (and (derived-mode-p 'latex-mode) langtool-cleanup-latex)
       (langtool--clear-regex "\\$[^$]+\\$")
       (langtool--clear-regex "\\\\[[^]]+\\\\]")
-      (langtool--clear-regex "\\\\[^\\\\{\\[ ]*\\(\\[[^]]*\\]\\)*\\({[^}]*}\\)*\\(\\[[^]]*\\]\\)*"))
+      (langtool--clear-regex "\\\\[^\\\\{\\[ ]*\\(\\[[^]]*\\]\\)*\\({[^}]*}\\)*\\(\\[[^]]*\\]\\)*")
+      (langtool--clear-regex "~"))
+
     ;; Remove user regex if present
     (if (not (= (length langtool-cleanup-regex) 0))
         (langtool--clear-regex langtool-cleanup-regex))
