@@ -129,9 +129,7 @@
 ;; * process coding system (test on Windows)
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
-;; * I don't know well about java. But GNU libgcj version not works..
 ;; * java encoding <-> elisp encoding (No enough information..)
-;; * should use --api argument
 
 ;;; Code:
 
