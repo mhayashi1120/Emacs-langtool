@@ -120,6 +120,9 @@
 ;;     (add-hook '**SOME**-mode-hook
 ;;               (lambda () (set (make-local-variable 'langtool-java-user-arguments)
 ;;                              '("-Dfile.encoding=UTF-8"))))
+;;
+;;   NOTE: Although there is no good example, `langtool-user-arguments' is
+;;   a similar custom variable.
 
 ;;; TODO:
 
