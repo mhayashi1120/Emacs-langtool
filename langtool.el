@@ -250,6 +250,8 @@ String that separated by comma or list of string.
 
 Valid values are described below:
 http://wiki.languagetool.org/command-line-options
+
+Do not change this variable if you don't understand what you are doing.
 "
   :group 'langtool
   :type '(choice
