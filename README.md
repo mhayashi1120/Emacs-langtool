@@ -62,6 +62,23 @@ These settings are optional:
 (setq langtool-mother-tongue "en")
 ```
 
+* To customize LanguageTool commandline arguments.
+
+```
+(setq langtool-java-user-arguments '("-Dfile.encoding=UTF-8"))
+```
+
+  You can also make the variable to buffer local like following:
+
+```
+(add-hook '**SOME**-mode-hook
+          (lambda () (set (make-local-variable 'langtool-java-user-arguments)
+                         '("-Dfile.encoding=UTF-8"))))
+```
+
+  NOTE: Although there is no good example, `langtool-user-arguments` is
+  a similar custom variable.
+
 ## Usage:
 
 * To check current buffer and show warnings.
@@ -115,21 +132,4 @@ M-x langtool-show-message-at-point
 ```
 M-x langtool-check-done
 ```
-
-* To customize LanguageTool commandline arguments.
-
-```
-(setq langtool-java-user-arguments '("-Dfile.encoding=UTF-8"))
-```
-
-  You can also make the variable to buffer local like following:
-
-```
-(add-hook '**SOME**-mode-hook
-          (lambda () (set (make-local-variable 'langtool-java-user-arguments)
-                         '("-Dfile.encoding=UTF-8"))))
-```
-
-  NOTE: Although there is no good example, `langtool-user-arguments` is
-  similar custom variable.
 
