@@ -71,6 +71,19 @@
 ;;
 ;;     (setq langtool-mother-tongue "en")
 
+;; * To customize LanguageTool commandline arguments.
+;;
+;;     (setq langtool-java-user-arguments '("-Dfile.encoding=UTF-8"))
+;;
+;;   You can also make the variable to buffer local like following:
+;;
+;;     (add-hook '**SOME**-mode-hook
+;;               (lambda () (set (make-local-variable 'langtool-java-user-arguments)
+;;                              '("-Dfile.encoding=UTF-8"))))
+;;
+;;   NOTE: Although there is no good example, `langtool-user-arguments' is
+;;   a similar custom variable.
+
 ;; ## Usage:
 
 ;; * To check current buffer and show warnings.
@@ -184,6 +197,20 @@
   :group 'langtool
   :type 'file)
 
+(defcustom langtool-java-user-arguments nil
+  "List of string which is passed to java command as arguments. 
+This java command holds LanguageTool process.
+Otherwise, function which return above value.
+
+e.g. ( Described at http://wiki.languagetool.org/command-line-options )
+\(setq langtool-java-user-arguments '(\"-Dfile.encoding=UTF-8\"))
+
+"
+  :group 'langtool
+  :type '(choice
+          (repeat string)
+          function))
+
 (defcustom langtool-language-tool-jar nil
   "LanguageTool jar file.
 
@@ -218,6 +245,20 @@ String that separated by comma or list of string.
   :type '(choice
           (list string)
           string))
+
+(defcustom langtool-user-arguments nil
+  "Similar to `langtool-java-user-arguments' except this list is appended
+ after `-jar' argument.
+
+Valid values are described below:
+http://wiki.languagetool.org/command-line-options
+
+Do not change this variable if you don't understand what you are doing.
+"
+  :group 'langtool
+  :type '(choice
+          (repeat string)
+          function))
 
 (defcustom langtool-error-exists-hook
   '(langtool-autoshow-ensure-timer)
@@ -608,6 +649,16 @@ Ordinary no need to change this."
   :group 'langtool
   :type 'coding-system)
 
+(defun langtool--custom-arguments (var)
+  (let ((value (symbol-value var))
+        args)
+    (cond
+     ((functionp value)
+      (setq args (funcall value)))
+     ((consp value)
+      (setq args value)))
+    (copy-sequence args)))
+
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
@@ -615,19 +666,26 @@ Ordinary no need to change this."
   (langtool--clear-buffer-overlays)
   (let ((command langtool-java-bin)
         args)
-    (setq args (list "-c" (langtool--java-coding-system
-                           buffer-file-coding-system)
-                     "-l" (or lang langtool-default-language)
-                     "-d" (langtool--disabled-rules)))
+    ;; Construct arguments pass to java command
+    (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
     (if langtool-java-classpath
-        (setq args (append (list "-cp" langtool-java-classpath
-                                 "org.languagetool.commandline.Main")
-                           args))
+        (setq args (append
+                    args
+                    (list "-cp" langtool-java-classpath
+                          "org.languagetool.commandline.Main")))
       (setq args (append
-                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
-                  args)))
+                  args
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar)))))
+    ;; Construct arguments pass to jar file.
+    (setq args (append
+                args
+                (list "-c" (langtool--java-coding-system
+                            buffer-file-coding-system)
+                      "-l" (or lang langtool-default-language)
+                      "-d" (langtool--disabled-rules))))
     (when langtool-mother-tongue
       (setq args (append args (list "-m" langtool-mother-tongue))))
+    (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
     (setq args (append args (list (langtool--process-file-name file))))
     (langtool--debug "Command" "%s: %s" command args)
     (let* ((buffer (langtool--process-create-buffer))
