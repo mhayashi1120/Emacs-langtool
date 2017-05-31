@@ -117,6 +117,8 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
+;; * change to --json argument to parse. Do not forget parse whole json text
+;;   , must parse partial json in process filter.
 
 ;;; Code:
 
