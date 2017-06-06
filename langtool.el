@@ -198,7 +198,7 @@
   :type 'file)
 
 (defcustom langtool-java-user-arguments nil
-  "List of string which is passed to java command as arguments. 
+  "List of string which is passed to java command as arguments.
 This java command holds LanguageTool process.
 Otherwise, function which return above value.
 
