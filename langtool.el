@@ -67,6 +67,12 @@
 ;;
 ;;     (setq langtool-java-bin "/path/to/java")
 
+;; * Maybe your LanguageTool have launcher. (e.g. Gentoo)
+;;   You need to set `langtool-bin'.
+;;   See https://github.com/mhayashi1120/Emacs-langtool/issues/24
+;;
+;;     (setq langtool-bin "/usr/bin/languagetool")
+
 ;; * Maybe you want to specify your mother tongue.
 ;;
 ;;     (setq langtool-mother-tongue "en")
