@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.6.0
+;; Version: 1.7.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -519,10 +519,11 @@ Do not change this variable if you don't understand what you are doing.
   (when (or (null langtool-java-bin)
             (not (executable-find langtool-java-bin)))
     (error "java command is not found"))
-  (unless langtool-java-classpath
-    (when (or (null langtool-language-tool-jar)
-              (not (file-readable-p langtool-language-tool-jar)))
-      (error "langtool jar file is not found")))
+  (cond
+   (langtool-java-classpath)
+   (langtool-language-tool-jar
+    (unless (file-readable-p langtool-language-tool-jar)
+      (error "langtool jar file is not readable"))))
   (when langtool-buffer-process
     (error "Another process is running")))
 
@@ -668,14 +669,16 @@ Ordinary no need to change this."
         args)
     ;; Construct arguments pass to java command
     (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
-    (if langtool-java-classpath
-        (setq args (append
-                    args
-                    (list "-cp" langtool-java-classpath
-                          "org.languagetool.commandline.Main")))
+    (cond
+     (langtool-java-classpath
       (setq args (append
                   args
-                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar)))))
+                  (list "-cp" langtool-java-classpath
+                        "org.languagetool.commandline.Main"))))
+     (langtool-language-tool-jar
+      (setq args (append
+                  args
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))
     ;; Construct arguments pass to jar file.
     (setq args (append
                 args
@@ -811,17 +814,19 @@ Ordinary no need to change this."
 (defun langtool--available-languages ()
   (let ((command langtool-java-bin)
         args res)
+    ;; Construct arguments pass to java command
     (cond
-     ((null langtool-language-tool-jar))
      (langtool-java-classpath
-      (setq args (append args
-                         (list "-cp" langtool-java-classpath
-                               "org.languagetool.commandline.Main"))))
-     (t
       (setq args (append
                   args
-                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))
-                  (list "--list")))))
+                  (list "-cp" langtool-java-classpath
+                        "org.languagetool.commandline.Main"))))
+     (langtool-language-tool-jar
+      (setq args (append
+                  args
+                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))
+    ;; Construct arguments pass to jar file.
+    (setq args (append args (list "--list")))
     (with-temp-buffer
       (when (and command args
                  (executable-find command)
