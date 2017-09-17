@@ -197,6 +197,11 @@
   :group 'langtool
   :type 'file)
 
+(defcustom langtool-bin nil
+  "Executing LanguageTool command."
+  :group 'langtool
+  :type 'file)
+
 (defcustom langtool-java-user-arguments nil
   "List of string which is passed to java command as arguments.
 This java command holds LanguageTool process.
@@ -516,9 +521,13 @@ Do not change this variable if you don't understand what you are doing.
                  ",")))))
 
 (defun langtool--check-command ()
-  (when (or (null langtool-java-bin)
-            (not (executable-find langtool-java-bin)))
-    (error "java command is not found"))
+  (cond
+   (langtool-bin
+    (unless (executable-find langtool-bin)
+      (error "LanguageTool command not executable")))
+   ((or (null langtool-java-bin)
+        (not (executable-find langtool-java-bin)))
+    (error "java command is not found")))
   (cond
    (langtool-java-classpath)
    (langtool-language-tool-jar
@@ -526,6 +535,27 @@ Do not change this variable if you don't understand what you are doing.
       (error "langtool jar file is not readable"))))
   (when langtool-buffer-process
     (error "Another process is running")))
+
+(defun langtool--basic-command&args ()
+  (let (command args)
+    (cond
+     (langtool-bin
+      (setq command langtool-bin))
+     (t
+      (setq command langtool-java-bin)
+      ;; Construct arguments pass to java command
+      (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
+      (cond
+       (langtool-java-classpath
+        (setq args (append
+                    args
+                    (list "-cp" langtool-java-classpath
+                          "org.languagetool.commandline.Main"))))
+       (langtool-language-tool-jar
+        (setq args (append
+                    args
+                    (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))))
+    (list command args)))
 
 (defun langtool--process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
@@ -665,20 +695,8 @@ Ordinary no need to change this."
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
   (langtool--clear-buffer-overlays)
-  (let ((command langtool-java-bin)
-        args)
-    ;; Construct arguments pass to java command
-    (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
-    (cond
-     (langtool-java-classpath
-      (setq args (append
-                  args
-                  (list "-cp" langtool-java-classpath
-                        "org.languagetool.commandline.Main"))))
-     (langtool-language-tool-jar
-      (setq args (append
-                  args
-                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))
+  (cl-destructuring-bind (command args)
+      (langtool--basic-command&args)
     ;; Construct arguments pass to jar file.
     (setq args (append
                 args
@@ -812,30 +830,20 @@ Ordinary no need to change this."
     (coding-system-get coding-system 'alias-coding-systems)))
 
 (defun langtool--available-languages ()
-  (let ((command langtool-java-bin)
-        args res)
-    ;; Construct arguments pass to java command
-    (cond
-     (langtool-java-classpath
-      (setq args (append
-                  args
-                  (list "-cp" langtool-java-classpath
-                        "org.languagetool.commandline.Main"))))
-     (langtool-language-tool-jar
-      (setq args (append
-                  args
-                  (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))
+  (cl-destructuring-bind (command args)
+      (langtool--basic-command&args)
     ;; Construct arguments pass to jar file.
     (setq args (append args (list "--list")))
-    (with-temp-buffer
-      (when (and command args
-                 (executable-find command)
-                 (= (langtool--with-java-environ
-                     (apply 'call-process command nil t nil args) 0)))
-        (goto-char (point-min))
-        (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
-          (setq res (cons (match-string 1) res)))
-        (nreverse res)))))
+    (let (res)
+      (with-temp-buffer
+        (when (and command args
+                   (executable-find command)
+                   (= (langtool--with-java-environ
+                       (apply 'call-process command nil t nil args) 0)))
+          (goto-char (point-min))
+          (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+            (setq res (cons (match-string 1) res)))
+          (nreverse res))))))
 
 ;;
 ;; interactive correction
