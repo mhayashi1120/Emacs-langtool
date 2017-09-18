@@ -770,6 +770,10 @@ Ordinary no need to change this."
         (kill-buffer pbuf)))))
 
 (defun langtool--cleanup-process ()
+  ;; cleanup mode-line
+  (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
+    (when cell
+      (remq cell mode-line-process)))
   (when langtool-buffer-process
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
