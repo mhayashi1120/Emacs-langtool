@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.7.0
+;; Version: 1.7.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -373,29 +373,28 @@ Do not change this variable if you don't understand what you are doing.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--create-overlay (tuple)
+(defun langtool--compute-start&end (tuple)
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
         (len (nth 2 tuple))
-        (sugs (nth 3 tuple))
-        (msg (nth 4 tuple))
-        (message (nth 5 tuple))
-        (rule-id (nth 6 tuple))
         (context (nth 7 tuple)))
     (goto-char (point-min))
     (forward-line (1- line))
     ;;  1. sketchy move to column that is indicated by LanguageTool.
     ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
     (forward-char (1- col))
-    (cl-destructuring-bind (start . end)
-        (langtool--fuzzy-search context len)
-      (let ((ov (make-overlay start end)))
-        (overlay-put ov 'langtool-simple-message msg)
-        (overlay-put ov 'langtool-message message)
-        (overlay-put ov 'langtool-suggestions sugs)
-        (overlay-put ov 'langtool-rule-id rule-id)
-        (overlay-put ov 'priority 1)
-        (overlay-put ov 'face 'langtool-errline)))))
+    (langtool--fuzzy-search context len)))
+
+(defun langtool--create-overlay (tuple)
+  (cl-destructuring-bind (start . end)
+      (langtool--compute-start&end tuple)
+    (let ((ov (make-overlay start end)))
+      (overlay-put ov 'langtool-simple-message (nth 4 tuple))
+      (overlay-put ov 'langtool-message (nth 5 tuple))
+      (overlay-put ov 'langtool-suggestions (nth 3 tuple))
+      (overlay-put ov 'langtool-rule-id (nth 6 tuple))
+      (overlay-put ov 'priority 1)
+      (overlay-put ov 'face 'langtool-errline))))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
@@ -839,21 +838,42 @@ Ordinary no need to change this."
       (funcall 'coding-system-aliases coding-system)
     (coding-system-get coding-system 'alias-coding-systems)))
 
-(defun langtool--available-languages ()
+(defun langtool--brief-execute (langtool-args parser)
   (cl-destructuring-bind (command args)
       (langtool--basic-command&args)
     ;; Construct arguments pass to jar file.
-    (setq args (append args (list "--list")))
-    (let (res)
-      (with-temp-buffer
-        (when (and command args
-                   (executable-find command)
-                   (= (langtool--with-java-environ
-                       (apply 'call-process command nil t nil args) 0)))
-          (goto-char (point-min))
-          (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
-            (setq res (cons (match-string 1) res)))
-          (nreverse res))))))
+    (setq args (append args langtool-args))
+    (with-temp-buffer
+      (when (and command args
+                 (executable-find command)
+                 (= (langtool--with-java-environ
+                     (apply 'call-process command nil t nil args) 0)))
+        (goto-char (point-min))
+        (funcall parser)))))
+
+(defun langtool--available-languages ()
+  (langtool--brief-execute
+   (list "--list")
+   (lambda ()
+     (let ((res '()))
+       (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+         (setq res (cons (match-string 1) res)))
+       (nreverse res)))))
+
+(defun langtool--jar-version-string ()
+  (langtool--brief-execute
+   (list "--version")
+   (lambda ()
+     (langtool--chomp (buffer-string)))))
+
+(defun langtool--jar-version ()
+  (let ((string (langtool--jar-version-string)))
+    (cond
+     ((string-match "version \\([0-9.]+\\)" string)
+      (match-string 1 string))
+     (t
+      ;; Unknown version, but should not raise error in this function.
+      "0.0"))))
 
 ;;
 ;; interactive correction
