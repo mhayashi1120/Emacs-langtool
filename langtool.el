@@ -373,21 +373,26 @@ Do not change this variable if you don't understand what you are doing.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--compute-start&end (tuple)
+(defun langtool--compute-start&end (version tuple)
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
         (len (nth 2 tuple))
         (context (nth 7 tuple)))
     (goto-char (point-min))
     (forward-line (1- line))
-    ;;  1. sketchy move to column that is indicated by LanguageTool.
-    ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-    (forward-char (1- col))
-    (langtool--fuzzy-search context len)))
+    (cond
+     ((version< version "2.0")
+      ;;  1. sketchy move to column that is indicated by LanguageTool.
+      ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
+      (forward-char (1- col))
+      (langtool--fuzzy-search context len))
+     (t
+      (forward-char col)
+      (cons (point) (+ (point) len))))))
 
-(defun langtool--create-overlay (tuple)
+(defun langtool--create-overlay (version tuple)
   (cl-destructuring-bind (start . end)
-      (langtool--compute-start&end tuple)
+      (langtool--compute-start&end version tuple)
     (let ((ov (make-overlay start end)))
       (overlay-put ov 'langtool-simple-message (nth 4 tuple))
       (overlay-put ov 'langtool-message (nth 5 tuple))
@@ -589,6 +594,7 @@ Do not change this variable if you don't understand what you are doing.
           (buffer (process-get proc 'langtool-source-buffer))
           (begin (process-get proc 'langtool-region-begin))
           (finish (process-get proc 'langtool-region-finish))
+          (version (process-get proc 'langtool-jar-version))
           n-tuple)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
@@ -619,7 +625,7 @@ Do not change this variable if you don't understand what you are doing.
                 (narrow-to-region begin finish))
               (mapc
                (lambda (tuple)
-                 (langtool--create-overlay tuple))
+                 (langtool--create-overlay version tuple))
                (nreverse n-tuple)))))))))
 
 ;;FIXME sometimes LanguageTool reports wrong column.
@@ -700,32 +706,34 @@ Ordinary no need to change this."
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
   (langtool--clear-buffer-overlays)
-  (cl-destructuring-bind (command args)
-      (langtool--basic-command&args)
-    ;; Construct arguments pass to jar file.
-    (setq args (append
-                args
-                (list "-c" (langtool--java-coding-system
-                            buffer-file-coding-system)
-                      "-l" (or lang langtool-default-language)
-                      "-d" (langtool--disabled-rules))))
-    (when langtool-mother-tongue
-      (setq args (append args (list "-m" langtool-mother-tongue))))
-    (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
-    (setq args (append args (list (langtool--process-file-name file))))
-    (langtool--debug "Command" "%s: %s" command args)
-    (let* ((buffer (langtool--process-create-buffer))
-           (proc (langtool--with-java-environ
-                  (apply 'start-process "LanguageTool" buffer command args))))
-      (set-process-filter proc 'langtool--process-filter)
-      (set-process-sentinel proc 'langtool--process-sentinel)
-      (process-put proc 'langtool-source-buffer (current-buffer))
-      (process-put proc 'langtool-region-begin begin)
-      (process-put proc 'langtool-region-finish finish)
-      (setq langtool-buffer-process proc)
-      (setq langtool-mode-line-message
-            (list " LanguageTool"
-                  (propertize ":run" 'face compilation-info-face))))))
+  (let ((version (langtool--jar-version)))
+    (cl-destructuring-bind (command args)
+        (langtool--basic-command&args)
+      ;; Construct arguments pass to jar file.
+      (setq args (append
+                  args
+                  (list "-c" (langtool--java-coding-system
+                              buffer-file-coding-system)
+                        "-l" (or lang langtool-default-language)
+                        "-d" (langtool--disabled-rules))))
+      (when langtool-mother-tongue
+        (setq args (append args (list "-m" langtool-mother-tongue))))
+      (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
+      (setq args (append args (list (langtool--process-file-name file))))
+      (langtool--debug "Command" "%s: %s" command args)
+      (let* ((buffer (langtool--process-create-buffer))
+             (proc (langtool--with-java-environ
+                    (apply 'start-process "LanguageTool" buffer command args))))
+        (set-process-filter proc 'langtool--process-filter)
+        (set-process-sentinel proc 'langtool--process-sentinel)
+        (process-put proc 'langtool-source-buffer (current-buffer))
+        (process-put proc 'langtool-region-begin begin)
+        (process-put proc 'langtool-region-finish finish)
+        (process-put proc 'langtool-jar-version version)
+        (setq langtool-buffer-process proc)
+        (setq langtool-mode-line-message
+              (list " LanguageTool"
+                    (propertize ":run" 'face compilation-info-face)))))))
 
 (defun langtool--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
