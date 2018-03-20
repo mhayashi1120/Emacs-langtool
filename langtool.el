@@ -417,6 +417,19 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
       (overlay-put ov 'priority 1)
       (overlay-put ov 'face 'langtool-errline))))
 
+(defun langtool--create-overlay2 (tuple)
+  (let* ((offset (nth 8 tuple))
+         (len (nth 2 tuple))
+         (start offset)
+         (end (+ start len))
+         (ov (make-overlay start end)))
+    (overlay-put ov 'langtool-simple-message (nth 4 tuple))
+    (overlay-put ov 'langtool-message (nth 5 tuple))
+    (overlay-put ov 'langtool-suggestions (nth 3 tuple))
+    (overlay-put ov 'langtool-rule-id (nth 6 tuple))
+    (overlay-put ov 'priority 1)
+    (overlay-put ov 'face 'langtool-errline)))
+
 (defun langtool--clear-buffer-overlays ()
   (mapc
    (lambda (ov)
@@ -794,6 +807,161 @@ Ordinary no need to change this."
         (message "LanguageTool successfully finished with no error.")))
       (when (buffer-live-p pbuf)
         (kill-buffer pbuf)))))
+
+(defvar langtool-server-process nil)
+
+(defun langtool-server--check-command ()
+  (cond
+   ((or (null langtool-java-bin)
+        (not (executable-find langtool-java-bin)))
+    (error "java command is not found")))
+  (cond
+   (langtool-language-tool-server-jar
+    (unless (file-readable-p langtool-language-tool-server-jar)
+      (error "languagetool-server jar file is not readable")))))
+
+(defun langtool-server-ensure-stop ()
+  (when (processp langtool-server-process)
+    (let ((buffer (process-buffer langtool-server-process)))
+      (delete-process langtool-server-process)
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))))
+  (setq langtool-server-process nil))
+
+(defun langtool-server--ensure-running ()
+  (langtool-server--check-command)
+  (unless (and (processp langtool-server-process)
+               (eq (process-status langtool-server-process) 'run))
+    (setq langtool-server-process nil)
+    (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
+           (proc (start-process
+                  "LangtoolHttpServer" buffer
+                  langtool-java-bin
+                  "-cp" langtool-language-tool-server-jar
+                  ;; jar Default setting is "HTTPSServer" .
+                  ;; This application no need to use SSL since local app.
+                  ;; http://wiki.languagetool.org/http-server
+                  "org.languagetool.server.HTTPServer"))
+           (server (langtool-server--rendezvous buffer)))
+      (unless server
+        (error "Unable start server"))
+      (process-put proc :url-prefix server)
+      (setq langtool-server-process proc)))
+  langtool-server-process)
+
+(defun langtool-server--parse-listen-server ()
+  (save-excursion
+    (goto-char (point-min))
+    (cond
+     ((re-search-forward "^Starting LanguageTool.+? server on \\(.*\\)\.\.\.$"))
+     (t
+      (error "Unable read listen port")))
+    (match-string 1)))
+
+(defun langtool-server--rendezvous (buffer)
+  (catch 'rendezvous
+    (with-current-buffer buffer
+      (save-excursion
+        (let ((proc (get-buffer-process buffer)))
+          (while t
+            (goto-char (point-min))
+            (when (re-search-forward "^Server started" nil t)
+              ;;TODO parse version
+              (let ((server (langtool-server--parse-listen-server)))
+                (throw 'rendezvous server)))
+            (unless (eq (process-status proc) 'run)
+              (throw 'rendezvous nil))
+            (accept-process-output proc 0.1 nil t)))))))
+
+(defun langtool-server--invoke-client (file begin finish &optional lang)
+  (let* ((data (langtool-server--make-post-data file begin finish))
+         (url (langtool-server--make-post-url))
+         (buffer (langtool--process-create-buffer))
+         ;; TODO log-debug
+         (proc (start-process "TODO HOGE" buffer "curl" "--data" data url)))
+    (set-process-sentinel proc 'langtool-server--process-sentinel)
+    (set-process-filter proc 'langtool-server--process-filter)
+    (process-put proc 'langtool-source-buffer (current-buffer))
+    (process-put proc 'langtool-region-begin begin)
+    (process-put proc 'langtool-region-finish finish)
+    ;; (process-put proc 'langtool-jar-version version)
+    (setq langtool-buffer-process proc)
+    (setq langtool-mode-line-message
+          (list " LanguageTool"
+                (propertize ":run" 'face compilation-info-face)))))
+
+(defun langtool-server--process-sentinel (proc event)
+  (when (eq (process-status proc) 'exit)
+    (with-current-buffer (process-buffer proc)
+      ;; TODO make lazy
+      (goto-char (point-min))
+      (let* ((json (json-read))
+             (buffer (process-get proc 'langtool-source-buffer))
+             (begin (process-get proc 'langtool-region-begin))
+             (finish (process-get proc 'langtool-region-finish))
+             ;; (version (process-get proc 'langtool-jar-version))
+             (matches (cdr (assoc 'matches json)))
+             n-tuple)
+        (dolist (match
+                 ;; TODO
+                 (append matches nil)
+                 )
+          (let* ((offset (1+ (cdr (assoc 'offset match))))
+                 (len (cdr (assoc 'length match)))
+                 (rule (cdr (assoc 'rule match)))
+                 (rule-id (cdr (assoc 'id rule)))
+                 (replacements (cdr (assoc 'replacements rule)))
+                 (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
+                 (msg1 (cdr (assoc 'message match)))
+                 ;; rest of line. Point the raw message.
+                 (msg2 (cdr (assoc 'shortMessage match)))
+                 (message
+                  (concat "Rule ID: " rule-id "\n"
+                          msg1 "\n\n"
+                          msg2))
+                 (context nil)
+                 line column)
+            (setq n-tuple (cons
+                           (list line column len suggestions
+                                 msg1 message rule-id context
+                                 offset)
+                           n-tuple))))
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (save-excursion
+              (save-restriction
+                (when (and begin finish)
+                  (narrow-to-region begin finish))
+                (mapc
+                 (lambda (tuple)
+                   (langtool--create-overlay2 tuple))
+                 (nreverse n-tuple))))))))))
+
+(defun langtool-server--process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
+  (with-current-buffer (process-buffer proc)
+    (goto-char (point-max))
+    (insert event)
+    ))
+
+(defun langtool-server--make-post-data (file begin finish)
+  (let (text)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (setq text (buffer-string)))
+    (let ((query-string (url-build-query-string
+                         `(
+                           ("language" "en-US")
+                           ;; TODO encode
+                           ("text" ,text)
+                           ))))
+      (let ((file (make-temp-file temporary-file-directory)))
+        (write-region query-string nil file)
+        (concat "@" file)))))
+
+(defun langtool-server--make-post-url ()
+  (let ((prefix (process-get langtool-server-process :url-prefix)))
+    (format "%s/v2/check" prefix)))
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
