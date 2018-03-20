@@ -342,10 +342,6 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
 ;; basic functions
 ;;
 
-(defmacro langtool--with-java-environ (&rest form)
-  `(let ((coding-system-for-read langtool-process-coding-system))
-     (progn ,@form)))
-
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
@@ -551,6 +547,10 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
 ;; Process basic
 ;;
 
+(defmacro langtool--with-java-environ (&rest form)
+  `(let ((coding-system-for-read langtool-process-coding-system))
+     (progn ,@form)))
+
 (defun langtool--process-file-name (path)
   "Correct the file name depending on the underlying platform.
 
@@ -605,22 +605,6 @@ Ordinary no need to change this."
                  (append custom locals)
                  ",")))))
 
-(defun langtool-command--check-command ()
-  (cond
-   (langtool-bin
-    (unless (executable-find langtool-bin)
-      (error "LanguageTool command not executable")))
-   ((or (null langtool-java-bin)
-        (not (executable-find langtool-java-bin)))
-    (error "java command is not found")))
-  (cond
-   (langtool-java-classpath)
-   (langtool-language-tool-jar
-    (unless (file-readable-p langtool-language-tool-jar)
-      (error "langtool jar file is not readable"))))
-  (when langtool-buffer-process
-    (error "Another process is running")))
-
 (defun langtool--basic-command&args ()
   (let (command args)
     (cond
@@ -642,6 +626,7 @@ Ordinary no need to change this."
                     (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))))
     (list command args)))
 
+;; TODO remove function?
 (defun langtool--process-create-buffer ()
   (generate-new-buffer " *LanguageTool* "))
 
@@ -697,6 +682,22 @@ Ordinary no need to change this."
 ;;
 ;; LanguageTool Commandline
 ;;
+
+(defun langtool-command--check-command ()
+  (cond
+   (langtool-bin
+    (unless (executable-find langtool-bin)
+      (error "LanguageTool command not executable")))
+   ((or (null langtool-java-bin)
+        (not (executable-find langtool-java-bin)))
+    (error "java command is not found")))
+  (cond
+   (langtool-java-classpath)
+   (langtool-language-tool-jar
+    (unless (file-readable-p langtool-language-tool-jar)
+      (error "langtool jar file is not readable"))))
+  (when langtool-buffer-process
+    (error "Another process is running")))
 
 (defun langtool-command--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
@@ -1008,6 +1009,9 @@ Ordinary no need to change this."
   (kill-local-variable 'langtool-local-disabled-rules)
   (langtool--clear-buffer-overlays)
   (run-hooks 'langtool-finish-hook))
+
+(defun langtool--check-command ()
+  )
 
 ;;FIXME
 ;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
