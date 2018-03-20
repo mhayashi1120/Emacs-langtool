@@ -145,6 +145,7 @@
 
 (require 'cl-lib)
 (require 'compile)
+(require 'json)
 
 (defgroup langtool nil
   "Customize langtool"
