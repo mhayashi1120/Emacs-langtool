@@ -829,10 +829,10 @@ Ordinary no need to change this."
    ((or (null langtool-java-bin)
         (not (executable-find langtool-java-bin)))
     (error "java command is not found")))
-  (cond
-   (langtool-language-tool-server-jar
-    (unless (file-readable-p langtool-language-tool-server-jar)
-      (error "languagetool-server jar file is not readable")))))
+  (unless langtool-language-tool-server-jar
+    (error "Please set `langtool-language-tool-server-jar'"))
+  (unless (file-readable-p langtool-language-tool-server-jar)
+    (error "languagetool-server jar file is not readable")))
 
 (defun langtool-server-ensure-stop ()
   (when (processp langtool-server-process)
@@ -991,8 +991,11 @@ Ordinary no need to change this."
     (format "%s/v2/check" prefix)))
 
 ;;
-;; TODO
+;; TODO caller HTTP or commandline interface
 ;;
+
+(defun langtool--client-mode ()
+  )
 
 (defun langtool--invoke-process (file begin finish &optional lang)
   (langtool-command--invoke-process file begin finish lang))
@@ -1011,7 +1014,7 @@ Ordinary no need to change this."
   (run-hooks 'langtool-finish-hook))
 
 (defun langtool--check-command ()
-  )
+  (langtool-command--check-command))
 
 ;;FIXME
 ;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
