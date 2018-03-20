@@ -886,6 +886,7 @@ Ordinary no need to change this."
       (list version server))))
 
 (defun langtool-server--rendezvous (buffer)
+  (message "Waiting for server")
   (catch 'rendezvous
     (with-current-buffer buffer
       (save-excursion
@@ -897,6 +898,7 @@ Ordinary no need to change this."
                 (throw 'rendezvous data)))
             (unless (eq (process-status proc) 'run)
               (throw 'rendezvous nil))
+            (message "%s." (current-message))
             (accept-process-output proc 0.1 nil t)))))))
 
 (defun langtool-server--invoke-client (file begin finish &optional lang)
@@ -904,6 +906,7 @@ Ordinary no need to change this."
          (url (langtool-server--make-post-url))
          (buffer (langtool--process-create-buffer))
          ;; TODO log-debug
+         ;; TODO should use url-lib in emacs
          (proc (start-process "TODO HOGE" buffer "curl" "--data" data url)))
     (set-process-sentinel proc 'langtool-server--process-sentinel)
     (set-process-filter proc 'langtool-server--process-filter)
@@ -916,6 +919,7 @@ Ordinary no need to change this."
           (list " LanguageTool"
                 (propertize ":run" 'face compilation-info-face)))))
 
+;; TODO cleanup buffer or else
 (defun langtool-server--process-sentinel (proc event)
   (when (eq (process-status proc) 'exit)
     (with-current-buffer (process-buffer proc)
@@ -967,8 +971,7 @@ Ordinary no need to change this."
   (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
-    (insert event)
-    ))
+    (insert event)))
 
 (defun langtool-server--make-post-data (file begin finish)
   (let (text)
@@ -982,7 +985,7 @@ Ordinary no need to change this."
                            ("text" ,text)
                            ))))
       (let ((file (make-temp-file temporary-file-directory)))
-        (write-region query-string nil file)
+        (write-region query-string nil file nil 'no-msg)
         (concat "@" file)))))
 
 (defun langtool-server--make-post-url ()
@@ -1012,6 +1015,7 @@ Ordinary no need to change this."
      (langtool-server--ensure-running)
      (langtool-server--invoke-client file begin finish lang))))
 
+;; TODO cleanup HTTP Server?
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
   (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
