@@ -548,6 +548,47 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
 ;;;
 
 ;;
+;; Process basic
+;;
+
+(defun langtool--process-file-name (path)
+  "Correct the file name depending on the underlying platform.
+
+PATH: The file-name path to be corrected.
+
+Currently corrects the file-name-path when running under Cygwin."
+  (setq path (expand-file-name path))
+  (cond
+   ((eq system-type 'cygwin)
+    ;; no need to catch error. (e.g. cygpath is not found)
+    ;; this failure means LanguageTools is not working completely.
+    (with-temp-buffer
+      (call-process "cygpath" nil t nil "--windows" path)
+      (langtool--chomp (buffer-string))))
+   (t
+    path)))
+
+(defcustom langtool-process-coding-system
+  (cond
+   ((eq system-type 'cygwin)
+    'dos)
+   (t nil))
+  "LanguageTool process coding-system.
+Ordinary no need to change this."
+  :group 'langtool
+  :type 'coding-system)
+
+(defun langtool--custom-arguments (var)
+  (let ((value (symbol-value var))
+        args)
+    (cond
+     ((functionp value)
+      (setq args (funcall value)))
+     ((consp value)
+      (setq args value)))
+    (copy-sequence args)))
+
+;;
 ;; Command interaction
 ;;
 
@@ -652,44 +693,6 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
                              (langtool--sentence-to-fuzzy sentence)
                              "\\)")))))
       regexp)))
-
-
-(defun langtool--process-file-name (path)
-  "Correct the file name depending on the underlying platform.
-
-PATH: The file-name path to be corrected.
-
-Currently corrects the file-name-path when running under Cygwin."
-  (setq path (expand-file-name path))
-  (cond
-   ((eq system-type 'cygwin)
-    ;; no need to catch error. (e.g. cygpath is not found)
-    ;; this failure means LanguageTools is not working completely.
-    (with-temp-buffer
-      (call-process "cygpath" nil t nil "--windows" path)
-      (langtool--chomp (buffer-string))))
-   (t
-    path)))
-
-(defcustom langtool-process-coding-system
-  (cond
-   ((eq system-type 'cygwin)
-    'dos)
-   (t nil))
-  "LanguageTool process coding-system.
-Ordinary no need to change this."
-  :group 'langtool
-  :type 'coding-system)
-
-(defun langtool--custom-arguments (var)
-  (let ((value (symbol-value var))
-        args)
-    (cond
-     ((functionp value)
-      (setq args (funcall value)))
-     ((consp value)
-      (setq args value)))
-    (copy-sequence args)))
 
 ;;
 ;; LanguageTool Commandline
