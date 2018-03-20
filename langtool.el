@@ -618,50 +618,6 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
    ;; never through here, but if return nil from this function make stop everything.
    1))
 
-(defun langtool-command--process-filter (proc event)
-  (langtool--debug "Filter" "%s" event)
-  (with-current-buffer (process-buffer proc)
-    (goto-char (point-max))
-    (insert event)
-    (let ((min (or (process-get proc 'langtool-process-done)
-                   (point-min)))
-          (buffer (process-get proc 'langtool-source-buffer))
-          (begin (process-get proc 'langtool-region-begin))
-          (finish (process-get proc 'langtool-region-finish))
-          (version (process-get proc 'langtool-jar-version))
-          n-tuple)
-      (goto-char min)
-      (while (re-search-forward langtool-output-regexp nil t)
-        (let* ((line (string-to-number (match-string 1)))
-               (column (1- (string-to-number (match-string 2))))
-               (rule-id (match-string 3))
-               (suggest (match-string 5))
-               (msg1 (match-string 4))
-               ;; rest of line. Point the raw message.
-               (msg2 (match-string 6))
-               (message
-                (concat "Rule ID: " rule-id "\n"
-                        msg1 "\n\n"
-                        msg2))
-               (suggestions (and suggest (split-string suggest "; ")))
-               (context (langtool--pointed-context-regexp msg2))
-               (len (langtool--pointed-length msg2)))
-          (setq n-tuple (cons
-                         (list line column len suggestions
-                               msg1 message rule-id context)
-                         n-tuple))))
-      (process-put proc 'langtool-process-done (point))
-      (when (buffer-live-p buffer)
-        (with-current-buffer buffer
-          (save-excursion
-            (save-restriction
-              (when (and begin finish)
-                (narrow-to-region begin finish))
-              (mapc
-               (lambda (tuple)
-                 (langtool--create-overlay version tuple))
-               (nreverse n-tuple)))))))))
-
 ;;FIXME sometimes LanguageTool reports wrong column.
 (defun langtool--pointed-context-regexp (message)
   (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
@@ -773,8 +729,49 @@ Ordinary no need to change this."
               (list " LanguageTool"
                     (propertize ":run" 'face compilation-info-face)))))))
 
-(defun langtool--invoke-process (file begin finish &optional lang)
-  (langtool-command--invoke-process file begin finish lang))
+(defun langtool-command--process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
+  (with-current-buffer (process-buffer proc)
+    (goto-char (point-max))
+    (insert event)
+    (let ((min (or (process-get proc 'langtool-process-done)
+                   (point-min)))
+          (buffer (process-get proc 'langtool-source-buffer))
+          (begin (process-get proc 'langtool-region-begin))
+          (finish (process-get proc 'langtool-region-finish))
+          (version (process-get proc 'langtool-jar-version))
+          n-tuple)
+      (goto-char min)
+      (while (re-search-forward langtool-output-regexp nil t)
+        (let* ((line (string-to-number (match-string 1)))
+               (column (1- (string-to-number (match-string 2))))
+               (rule-id (match-string 3))
+               (suggest (match-string 5))
+               (msg1 (match-string 4))
+               ;; rest of line. Point the raw message.
+               (msg2 (match-string 6))
+               (message
+                (concat "Rule ID: " rule-id "\n"
+                        msg1 "\n\n"
+                        msg2))
+               (suggestions (and suggest (split-string suggest "; ")))
+               (context (langtool--pointed-context-regexp msg2))
+               (len (langtool--pointed-length msg2)))
+          (setq n-tuple (cons
+                         (list line column len suggestions
+                               msg1 message rule-id context)
+                         n-tuple))))
+      (process-put proc 'langtool-process-done (point))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (save-excursion
+            (save-restriction
+              (when (and begin finish)
+                (narrow-to-region begin finish))
+              (mapc
+               (lambda (tuple)
+                 (langtool--create-overlay version tuple))
+               (nreverse n-tuple)))))))))
 
 (defun langtool-command--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
@@ -992,6 +989,9 @@ Ordinary no need to change this."
 ;;
 ;; TODO
 ;;
+
+(defun langtool--invoke-process (file begin finish &optional lang)
+  (langtool-command--invoke-process file begin finish lang))
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
