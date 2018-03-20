@@ -560,7 +560,7 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
                  (append custom locals)
                  ",")))))
 
-(defun langtool--check-command ()
+(defun langtool-command--check-command ()
   (cond
    (langtool-bin
     (unless (executable-find langtool-bin)
@@ -843,21 +843,34 @@ Ordinary no need to change this."
                   ;; This application no need to use SSL since local app.
                   ;; http://wiki.languagetool.org/http-server
                   "org.languagetool.server.HTTPServer"))
-           (server (langtool-server--rendezvous buffer)))
-      (unless server
+           (data (langtool-server--rendezvous buffer)))
+      (unless data
         (error "Unable start server"))
-      (process-put proc :url-prefix server)
+      (let ((version (nth 0 data))
+            (server (nth 1 data)))
+        (process-put proc 'langtool-server-url-prefix server)
+        (process-put proc 'langtool-server-jar-version version))
       (setq langtool-server-process proc)))
   langtool-server-process)
 
-(defun langtool-server--parse-listen-server ()
+(defun langtool-server--parse-initial-buffer ()
   (save-excursion
     (goto-char (point-min))
     (cond
-     ((re-search-forward "^Starting LanguageTool.+? server on \\(.*\\)\.\.\.$"))
+     ((re-search-forward (eval-when-compile
+                           (concat
+                            "^"
+                            "Starting LanguageTool "
+                            "\\([0-9.]+\\) "
+                            ".+?"
+                            "server on \\(.*\\)"
+                            "\.\.\."
+                            "$"))))
      (t
       (error "Unable read listen port")))
-    (match-string 1)))
+    (let ((version (match-string 1))
+          (server (match-string 2)))
+      (list version server))))
 
 (defun langtool-server--rendezvous (buffer)
   (catch 'rendezvous
@@ -868,8 +881,8 @@ Ordinary no need to change this."
             (goto-char (point-min))
             (when (re-search-forward "^Server started" nil t)
               ;;TODO parse version
-              (let ((server (langtool-server--parse-listen-server)))
-                (throw 'rendezvous server)))
+              (let ((data (langtool-server--parse-initial-buffer)))
+                (throw 'rendezvous data)))
             (unless (eq (process-status proc) 'run)
               (throw 'rendezvous nil))
             (accept-process-output proc 0.1 nil t)))))))
@@ -961,7 +974,8 @@ Ordinary no need to change this."
         (concat "@" file)))))
 
 (defun langtool-server--make-post-url ()
-  (let ((prefix (process-get langtool-server-process :url-prefix)))
+  (let ((prefix (process-get langtool-server-process
+                             'langtool-server-url-prefix)))
     (format "%s/v2/check" prefix)))
 
 (defun langtool--cleanup-process ()
