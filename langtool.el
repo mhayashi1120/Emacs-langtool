@@ -731,6 +731,10 @@ Ordinary no need to change this."
       (setq args value)))
     (copy-sequence args)))
 
+;;
+;; LanguageTool Commandline
+;;
+
 (defun langtool-command--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
@@ -809,6 +813,10 @@ Ordinary no need to change this."
       (when (buffer-live-p pbuf)
         (kill-buffer pbuf)))))
 
+;;
+;; LanguageTool HTTP Server <-> Client
+;;
+
 (defvar langtool-server-process nil)
 
 (defun langtool-server--check-command ()
@@ -861,7 +869,7 @@ Ordinary no need to change this."
                            (concat
                             "^"
                             "Starting LanguageTool "
-                            "\\([0-9.]+\\) "
+                            "\\([0-9.]+\\)\\(?:-SNAPSHOT\\)? "
                             ".+?"
                             "server on \\(.*\\)"
                             "\.\.\."
@@ -880,7 +888,6 @@ Ordinary no need to change this."
           (while t
             (goto-char (point-min))
             (when (re-search-forward "^Server started" nil t)
-              ;;TODO parse version
               (let ((data (langtool-server--parse-initial-buffer)))
                 (throw 'rendezvous data)))
             (unless (eq (process-status proc) 'run)
@@ -977,6 +984,10 @@ Ordinary no need to change this."
   (let ((prefix (process-get langtool-server-process
                              'langtool-server-url-prefix)))
     (format "%s/v2/check" prefix)))
+
+;;
+;; TODO
+;;
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
