@@ -45,6 +45,8 @@
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 
+;;TODO (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+
 ;; These settings are optional:
 
 ;; * Key binding if you desired.
@@ -229,6 +231,11 @@ No need to set this variable when `langtool-java-classpath' is set."
   :group 'langtool
   :type 'file)
 
+(defcustom langtool-language-tool-server-jar nil
+  "LanguageTool server jar file."
+  :group 'langtool
+  :type 'file)
+
 (defcustom langtool-java-classpath nil
   "Custom classpath to use on special environment. (e.g. Arch Linux)
 Do not set both of this variable and `langtool-language-tool-jar'.
@@ -266,6 +273,15 @@ http://wiki.languagetool.org/command-line-options
 
 Do not change this variable if you don't understand what you are doing.
 "
+  :group 'langtool
+  :type '(choice
+          (repeat string)
+          function))
+
+(defcustom langtool-server-user-arguments nil
+  "TODO
+TODO about --config propertyFile
+java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
   :group 'langtool
   :type '(choice
           (repeat string)
@@ -584,7 +600,7 @@ Do not change this variable if you don't understand what you are doing.
    ;; never through here, but if return nil from this function make stop everything.
    1))
 
-(defun langtool--process-filter (proc event)
+(defun langtool-command--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
@@ -701,7 +717,7 @@ Ordinary no need to change this."
       (setq args value)))
     (copy-sequence args)))
 
-(defun langtool--invoke-process (file begin finish &optional lang)
+(defun langtool-command--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
@@ -724,8 +740,8 @@ Ordinary no need to change this."
       (let* ((buffer (langtool--process-create-buffer))
              (proc (langtool--with-java-environ
                     (apply 'start-process "LanguageTool" buffer command args))))
-        (set-process-filter proc 'langtool--process-filter)
-        (set-process-sentinel proc 'langtool--process-sentinel)
+        (set-process-filter proc 'langtool-command--process-filter)
+        (set-process-sentinel proc 'langtool-command--process-sentinel)
         (process-put proc 'langtool-source-buffer (current-buffer))
         (process-put proc 'langtool-region-begin begin)
         (process-put proc 'langtool-region-finish finish)
@@ -735,7 +751,10 @@ Ordinary no need to change this."
               (list " LanguageTool"
                     (propertize ":run" 'face compilation-info-face)))))))
 
-(defun langtool--process-sentinel (proc event)
+(defun langtool--invoke-process (file begin finish &optional lang)
+  (langtool-command--invoke-process file begin finish lang))
+
+(defun langtool-command--process-sentinel (proc event)
   (when (memq (process-status proc) '(exit signal))
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
