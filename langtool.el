@@ -543,8 +543,12 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
      (overlay-get ov 'langtool-message))
    (langtool--current-error-overlays)))
 
+;;;
+;;; LanguageTool Process
+;;;
+
 ;;
-;; LanguageTool Process
+;; Command interaction
 ;;
 
 (defun langtool--disabled-rules ()
