@@ -995,10 +995,22 @@ Ordinary no need to change this."
 ;;
 
 (defun langtool--client-mode ()
-  )
+  (cond
+   (langtool-language-tool-server-jar
+    'http)
+   ((or langtool-language-tool-jar
+        langtool-java-classpath)
+    'commandline)
+   (t
+    (error "TODO"))))
 
 (defun langtool--invoke-process (file begin finish &optional lang)
-  (langtool-command--invoke-process file begin finish lang))
+  (cl-ecase (langtool--client-mode)
+    ('commandline
+     (langtool-command--invoke-process file begin finish lang))
+    ('http
+     (langtool-server--ensure-running)
+     (langtool-server--invoke-client file begin finish lang))))
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
@@ -1014,7 +1026,11 @@ Ordinary no need to change this."
   (run-hooks 'langtool-finish-hook))
 
 (defun langtool--check-command ()
-  (langtool-command--check-command))
+  (cl-ecase (langtool--client-mode)
+    ('commandline
+     (langtool-command--check-command))
+    ('http
+     (langtool-server--check-command))))
 
 ;;FIXME
 ;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
