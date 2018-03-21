@@ -421,7 +421,7 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
   (let* ((offset (nth 8 tuple))
          (len (nth 2 tuple))
          ;; TODO when region activated
-         (start offset)
+         (start (+ (point-min) offset))
          (end (+ start len))
          (ov (make-overlay start end)))
     (overlay-put ov 'langtool-simple-message (nth 4 tuple))
@@ -940,7 +940,7 @@ Ordinary no need to change this."
                    ;; TODO
                    (append matches nil)
                    )
-            (let* ((offset (1+ (cdr (assoc 'offset match))))
+            (let* ((offset (cdr (assoc 'offset match)))
                    (len (cdr (assoc 'length match)))
                    (rule (cdr (assoc 'rule match)))
                    (rule-id (cdr (assoc 'id rule)))
