@@ -362,6 +362,9 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
       (substring s 0 (match-beginning 0))
     s))
 
+(defun langtool--make-temp-file ()
+  (make-temp-file "langtool-"))
+
 ;;
 ;; handle error overlay
 ;;
@@ -417,6 +420,7 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
 (defun langtool--create-overlay2 (tuple)
   (let* ((offset (nth 8 tuple))
          (len (nth 2 tuple))
+         ;; TODO when region activated
          (start offset)
          (end (+ start len))
          (ov (make-overlay start end)))
@@ -815,7 +819,7 @@ Ordinary no need to change this."
 ;; LanguageTool HTTP Server <-> Client
 ;;
 
-(defvar langtool-server-process nil)
+(defvar langtool-server--process nil)
 
 (defun langtool-server--check-command ()
   (cond
@@ -827,19 +831,20 @@ Ordinary no need to change this."
   (unless (file-readable-p langtool-language-tool-server-jar)
     (error "languagetool-server jar file is not readable")))
 
-(defun langtool-server-ensure-stop ()
-  (when (processp langtool-server-process)
-    (let ((buffer (process-buffer langtool-server-process)))
-      (delete-process langtool-server-process)
+(defun langtool-server-ensure-stop (&optional proc)
+  (setq proc (or proc langtool-server--process))
+  (when (processp proc)
+    (let ((buffer (process-buffer proc)))
+      (delete-process proc)
       (when (buffer-live-p buffer)
         (kill-buffer buffer))))
-  (setq langtool-server-process nil))
+  (setq langtool-server--process nil))
 
 (defun langtool-server--ensure-running ()
   (langtool-server--check-command)
-  (unless (and (processp langtool-server-process)
-               (eq (process-status langtool-server-process) 'run))
-    (setq langtool-server-process nil)
+  (unless (and (processp langtool-server--process)
+               (eq (process-status langtool-server--process) 'run))
+    (setq langtool-server--process nil)
     (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
            (proc (start-process
                   "LangtoolHttpServer" buffer
@@ -854,10 +859,14 @@ Ordinary no need to change this."
         (error "Unable start server"))
       (let ((version (nth 0 data))
             (server (nth 1 data)))
+        (when (version< version "4.0")
+          (langtool-server-ensure-stop proc)
+          (error "Not a supported server version (%s). After 4.0 is supported since json."
+                 version))
         (process-put proc 'langtool-server-url-prefix server)
         (process-put proc 'langtool-server-jar-version version))
-      (setq langtool-server-process proc)))
-  langtool-server-process)
+      (setq langtool-server--process proc)))
+  langtool-server--process)
 
 (defun langtool-server--parse-initial-buffer ()
   (save-excursion
@@ -899,13 +908,15 @@ Ordinary no need to change this."
          (buffer (langtool--process-create-buffer))
          ;; TODO log-debug
          ;; TODO should use url-lib in emacs
-         (proc (start-process "TODO HOGE" buffer "curl" "--data" data url)))
+         (proc (start-process "TODO HOGE" buffer "curl"
+                              "--data" (concat "@" data)
+                              url)))
     (set-process-sentinel proc 'langtool-server--process-sentinel)
     (set-process-filter proc 'langtool-server--process-filter)
     (process-put proc 'langtool-source-buffer (current-buffer))
     (process-put proc 'langtool-region-begin begin)
     (process-put proc 'langtool-region-finish finish)
-    ;; (process-put proc 'langtool-jar-version version)
+    (process-put proc 'langtool-post-file data)
     proc))
 
 ;; TODO cleanup buffer or else
@@ -916,12 +927,15 @@ Ordinary no need to change this."
         ;; TODO make lazy
         (goto-char (point-min))
         (let* ((json (json-read))
+               (post-file (process-get proc 'langtool-post-file))
                (source (process-get proc 'langtool-source-buffer))
                (begin (process-get proc 'langtool-region-begin))
                (finish (process-get proc 'langtool-region-finish))
-               ;; (version (process-get proc 'langtool-jar-version))
+               (version (process-get proc 'langtool-server-jar-version))
                (matches (cdr (assoc 'matches json)))
                n-tuple)
+          ;; TODO
+          (delete-file post-file)
           (dolist (match
                    ;; TODO
                    (append matches nil)
@@ -978,12 +992,12 @@ Ordinary no need to change this."
                            ;; TODO encode
                            ("text" ,text)
                            ))))
-      (let ((file (make-temp-file temporary-file-directory)))
+      (let ((file (langtool--make-temp-file)))
         (write-region query-string nil file nil 'no-msg)
-        (concat "@" file)))))
+        file))))
 
 (defun langtool-server--make-post-url ()
-  (let ((prefix (process-get langtool-server-process
+  (let ((prefix (process-get langtool-server--process
                              'langtool-server-url-prefix)))
     (format "%s/v2/check" prefix)))
 
@@ -1432,7 +1446,7 @@ Restrict to selection when region is activated.
     (when region-p
       (deactivate-mark))
     (unless langtool-temp-file
-      (setq langtool-temp-file (make-temp-file "langtool-")))
+      (setq langtool-temp-file (langtool--make-temp-file)))
     ;; create temporary file to pass the text contents to LanguageTool
     (when (or (null file)
               (buffer-modified-p)
