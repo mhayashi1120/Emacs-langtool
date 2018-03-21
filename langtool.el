@@ -393,18 +393,26 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
         (len (nth 2 tuple))
-        (context (nth 7 tuple)))
-    (goto-char (point-min))
-    (forward-line (1- line))
+        (context (nth 7 tuple))
+        ;; Only Server <-> Client have the data
+        (offset (nth 8 tuple)))
     (cond
-     ((version< version "2.0")
-      ;;  1. sketchy move to column that is indicated by LanguageTool.
-      ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-      (forward-char (1- col))
-      (langtool--fuzzy-search context len))
+     (offset
+      (let* ((start (+ (point-min) offset))
+             (end (+ start len)))
+        (cons start end)))
      (t
-      (forward-char col)
-      (cons (point) (+ (point) len))))))
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (cond
+       ((version< version "2.0")
+        ;;  1. sketchy move to column that is indicated by LanguageTool.
+        ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
+        (forward-char (1- col))
+        (langtool--fuzzy-search context len))
+       (t
+        (forward-char col)
+        (cons (point) (+ (point) len))))))))
 
 (defun langtool--create-overlay (version tuple)
   (cl-destructuring-bind (start . end)
@@ -416,20 +424,6 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
       (overlay-put ov 'langtool-rule-id (nth 6 tuple))
       (overlay-put ov 'priority 1)
       (overlay-put ov 'face 'langtool-errline))))
-
-(defun langtool--create-overlay2 (tuple)
-  (let* ((offset (nth 8 tuple))
-         (len (nth 2 tuple))
-         ;; TODO when region activated
-         (start (+ (point-min) offset))
-         (end (+ start len))
-         (ov (make-overlay start end)))
-    (overlay-put ov 'langtool-simple-message (nth 4 tuple))
-    (overlay-put ov 'langtool-message (nth 5 tuple))
-    (overlay-put ov 'langtool-suggestions (nth 3 tuple))
-    (overlay-put ov 'langtool-rule-id (nth 6 tuple))
-    (overlay-put ov 'priority 1)
-    (overlay-put ov 'face 'langtool-errline)))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
@@ -968,7 +962,7 @@ Ordinary no need to change this."
                     (narrow-to-region begin finish))
                   (mapc
                    (lambda (tuple)
-                     (langtool--create-overlay2 tuple))
+                     (langtool--create-overlay version tuple))
                    (nreverse n-tuple))))
               (setq langtool-buffer-process nil)
               ;; TODO langtool-mode-line-message
