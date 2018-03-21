@@ -897,7 +897,7 @@ Ordinary no need to change this."
           (accept-process-output proc 0.1 nil t))))))
 
 (defun langtool-server--invoke-client (file begin finish &optional lang)
-  (let* ((data (langtool-server--make-post-data file begin finish))
+  (let* ((data (langtool-server--make-post-data file begin finish lang))
          (url (langtool-server--make-post-url))
          (buffer (langtool--process-create-buffer))
          ;; TODO log-debug
@@ -975,17 +975,24 @@ Ordinary no need to change this."
     (goto-char (point-max))
     (insert event)))
 
-(defun langtool-server--make-post-data (file begin finish)
+(defun langtool-server--make-post-data (file begin finish lang)
   (let (text)
     (with-temp-buffer
       (insert-file-contents file)
       (setq text (buffer-string)))
-    (let ((query-string (url-build-query-string
-                         `(
-                           ("language" "en-US")
-                           ;; TODO encode
-                           ("text" ,text)
-                           ))))
+    ;; TODO coding-system
+    ;; (list "-c" (langtool--java-coding-system
+    ;;             buffer-file-coding-system)
+    (let* ((disabled-rules (langtool--disabled-rules))
+           (query `(
+                    ("language" ,(or lang langtool-default-language))
+                    ;; TODO encode
+                    ("text" ,text)
+                    ,@(and langtool-mother-tongue
+                           `(("motherTongue" ,langtool-mother-tongue)))
+                    ("disabled" ,disabled-rules)
+                    ))
+           (query-string (url-build-query-string query)))
       (let ((file (langtool--make-temp-file)))
         (write-region query-string nil file nil 'no-msg)
         file))))
