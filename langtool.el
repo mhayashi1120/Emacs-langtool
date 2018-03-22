@@ -769,7 +769,7 @@ Ordinary no need to change this."
                (nreverse n-tuple)))))))))
 
 (defun langtool-command--process-sentinel (proc event)
-  (when (memq (process-status proc) '(exit signal))
+  (unless (process-live-p proc)
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
           (pbuf (process-buffer proc))
@@ -839,27 +839,25 @@ Ordinary no need to change this."
   (unless (and (processp langtool-server--process)
                (eq (process-status langtool-server--process) 'run))
     (setq langtool-server--process nil)
-    (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
-           (proc (start-process
-                  "LangtoolHttpServer" buffer
-                  langtool-java-bin
-                  "-cp" langtool-language-tool-server-jar
-                  ;; jar Default setting is "HTTPSServer" .
-                  ;; This application no need to use SSL since local app.
-                  ;; http://wiki.languagetool.org/http-server
-                  "org.languagetool.server.HTTPServer"))
-           (data (langtool-server--rendezvous proc buffer)))
-      (unless data
-        (error "Unable start server"))
-      (let ((version (nth 0 data))
-            (server (nth 1 data)))
-        (when (version< version "4.0")
+    (let ((args '()))
+      ;; jar Default setting is "HTTPSServer" .
+      ;; This application no need to use SSL since local app.
+      ;; http://wiki.languagetool.org/http-server
+      (setq args (append args (list "org.languagetool.server.HTTPServer")))
+      (setq args (append args langtool-server-user-arguments))
+      (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
+             (proc (apply
+                    'start-process
+                    "LangtoolHttpServer" buffer
+                    langtool-java-bin
+                    "-cp" langtool-language-tool-server-jar
+                    args))
+             )
+        (unless (langtool-server--rendezvous proc buffer)
+          ;;TODO error show message
           (langtool-server-ensure-stop proc)
-          (error "Not a supported server version (%s). After 4.0 is supported since json."
-                 version))
-        (process-put proc 'langtool-server-url-prefix server)
-        (process-put proc 'langtool-server-jar-version version))
-      (setq langtool-server--process proc)))
+          (error "Unable start LanguageTool Server"))
+        (setq langtool-server--process proc))))
   langtool-server--process)
 
 (defun langtool-server--parse-initial-buffer ()
@@ -872,14 +870,15 @@ Ordinary no need to change this."
                             "Starting LanguageTool "
                             "\\([0-9.]+\\)\\(?:-SNAPSHOT\\)? "
                             ".+?"
-                            "server on \\(.*\\)"
+                            "server on https?://\\([^:]+\\):\\([0-9]+\\)"
                             "\.\.\."
                             "$"))))
      (t
-      (error "Unable read listen port")))
+      (error "Unable parse initial buffer")))
     (let ((version (match-string 1))
-          (server (match-string 2)))
-      (list version server))))
+          (host (match-string 2))
+          (port (string-to-number (match-string 3))))
+      (list version host port))))
 
 (defun langtool-server--rendezvous (proc buffer)
   (message "Waiting for server")
@@ -889,47 +888,58 @@ Ordinary no need to change this."
         (while t
           (goto-char (point-min))
           (when (re-search-forward "^Server started" nil t)
-            (let ((data (langtool-server--parse-initial-buffer)))
-              (throw 'rendezvous data)))
+            (cl-destructuring-bind (version host port)
+                (langtool-server--parse-initial-buffer)
+              (when (version< version "4.0")
+                ;;TODO message
+                (throw 'rendezvous nil))
+              (process-put proc 'langtool-server-host host)
+              (process-put proc 'langtool-server-port port)
+              (process-put proc 'langtool-server-jar-version version)
+              (throw 'rendezvous t)))
           (unless (eq (process-status proc) 'run)
             (throw 'rendezvous nil))
           (message "%s." (current-message))
           (accept-process-output proc 0.1 nil t))))))
 
 (defun langtool-server--invoke-client (file begin finish &optional lang)
-  (let* ((data (langtool-server--make-post-data file begin finish lang))
-         (url (langtool-server--make-post-url))
+  (let* ((data (langtool-server--make-post-data2  file begin finish lang))
+         (host (process-get langtool-server--process 'langtool-server-host))
+         (port (process-get langtool-server--process 'langtool-server-port))
          (buffer (langtool--process-create-buffer))
-         ;; TODO log-debug
-         ;; TODO should use url-lib in emacs
-         (proc (start-process "TODO HOGE" buffer "curl"
-                              "--data" (concat "@" data)
-                              url)))
+         (proc (langtool-server--http-post buffer host port data)))
+    ;; (let* ((data (langtool-server--make-post-data file begin finish lang))
+    ;;        (url (langtool-server--make-post-url))
+    ;;        (buffer (langtool--process-create-buffer))
+    ;;        ;; TODO log-debug
+    ;;        ;; TODO should use url-lib in emacs
+    ;;        (proc (start-process "TODO HOGE" buffer "curl"
+    ;;                             "--data" (concat "@" data)
+    ;;                             url)))
     (set-process-sentinel proc 'langtool-server--process-sentinel)
     (set-process-filter proc 'langtool-server--process-filter)
     (process-put proc 'langtool-source-buffer (current-buffer))
     (process-put proc 'langtool-region-begin begin)
     (process-put proc 'langtool-region-finish finish)
-    (process-put proc 'langtool-post-file data)
     proc))
 
 ;; TODO cleanup buffer or else
 (defun langtool-server--process-sentinel (proc event)
-  (when (memq (process-status proc) '(exit signal))
+  (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc)))
       (with-current-buffer pbuf
         ;; TODO make lazy
         (goto-char (point-min))
+        ;;TODO parse header
+        (unless (re-search-forward "^\r\n" nil t)
+          (error "TODO Header not found"))
         (let* ((json (json-read))
-               (post-file (process-get proc 'langtool-post-file))
                (source (process-get proc 'langtool-source-buffer))
                (begin (process-get proc 'langtool-region-begin))
                (finish (process-get proc 'langtool-region-finish))
                (version (process-get proc 'langtool-server-jar-version))
                (matches (cdr (assoc 'matches json)))
                n-tuple)
-          ;; TODO
-          (delete-file post-file)
           (dolist (match
                    ;; TODO
                    (append matches nil)
@@ -992,15 +1002,52 @@ Ordinary no need to change this."
                            `(("motherTongue" ,langtool-mother-tongue)))
                     ("disabled" ,disabled-rules)
                     ))
+           ;; TODO filter customizable function 
            (query-string (url-build-query-string query)))
       (let ((file (langtool--make-temp-file)))
         (write-region query-string nil file nil 'no-msg)
         file))))
 
-(defun langtool-server--make-post-url ()
-  (let ((prefix (process-get langtool-server--process
-                             'langtool-server-url-prefix)))
-    (format "%s/v2/check" prefix)))
+(defun langtool-server--make-post-data2 (file begin finish lang)
+  (let (text)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (setq text (buffer-string)))
+    ;; TODO coding-system
+    ;; (list "-c" (langtool--java-coding-system
+    ;;             buffer-file-coding-system)
+    (let* ((disabled-rules (langtool--disabled-rules))
+           (query `(
+                    ("language" ,(or lang langtool-default-language))
+                    ;; TODO encode
+                    ("text" ,text)
+                    ,@(and langtool-mother-tongue
+                           `(("motherTongue" ,langtool-mother-tongue)))
+                    ("disabled" ,disabled-rules)
+                    ))
+           ;; TODO filter customizable function 
+           (query-string (url-build-query-string query)))
+      query-string)))
+
+(defun langtool-server--http-post (buffer host port data)
+  (let ((client (open-network-stream
+                 "LangtoolHttpClient" buffer host port
+                 :type 'plain
+                 ;; Use non-blocking socket if we can.
+                 ;; :nowait (featurep 'make-network-process
+                 ;;                   '(:nowait t))
+                 )))
+    (process-send-string
+     client
+     (concat
+      (format "POST /v2/check HTTP/1.1\r\n")
+      (format "Host: localhost\r\n")
+      (format "Content-length: %d\r\n" (length data))
+      (format "Content-Type: application/x-www-form-urlencoded\r\n")
+      (format "\r\n")
+      data))
+    (process-send-eof client)
+    client))
 
 ;;
 ;; TODO caller HTTP or commandline interface
@@ -1041,6 +1088,7 @@ Ordinary no need to change this."
     (when cell
       (remq cell mode-line-process)))
   (when langtool-buffer-process
+    ;; TODO buffer killed, error. if process is local process (e.g. urllib)
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
