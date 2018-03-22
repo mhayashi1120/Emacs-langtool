@@ -908,14 +908,6 @@ Ordinary no need to change this."
          (port (process-get langtool-server--process 'langtool-server-port))
          (buffer (langtool--process-create-buffer))
          (proc (langtool-server--http-post buffer host port data)))
-    ;; (let* ((data (langtool-server--make-post-data file begin finish lang))
-    ;;        (url (langtool-server--make-post-url))
-    ;;        (buffer (langtool--process-create-buffer))
-    ;;        ;; TODO log-debug
-    ;;        ;; TODO should use url-lib in emacs
-    ;;        (proc (start-process "TODO HOGE" buffer "curl"
-    ;;                             "--data" (concat "@" data)
-    ;;                             url)))
     (set-process-sentinel proc 'langtool-server--process-sentinel)
     (set-process-filter proc 'langtool-server--process-filter)
     (process-put proc 'langtool-source-buffer (current-buffer))
@@ -985,29 +977,6 @@ Ordinary no need to change this."
     (goto-char (point-max))
     (insert event)))
 
-(defun langtool-server--make-post-data (file begin finish lang)
-  (let (text)
-    (with-temp-buffer
-      (insert-file-contents file)
-      (setq text (buffer-string)))
-    ;; TODO coding-system
-    ;; (list "-c" (langtool--java-coding-system
-    ;;             buffer-file-coding-system)
-    (let* ((disabled-rules (langtool--disabled-rules))
-           (query `(
-                    ("language" ,(or lang langtool-default-language))
-                    ;; TODO encode
-                    ("text" ,text)
-                    ,@(and langtool-mother-tongue
-                           `(("motherTongue" ,langtool-mother-tongue)))
-                    ("disabled" ,disabled-rules)
-                    ))
-           ;; TODO filter customizable function 
-           (query-string (url-build-query-string query)))
-      (let ((file (langtool--make-temp-file)))
-        (write-region query-string nil file nil 'no-msg)
-        file))))
-
 (defun langtool-server--make-post-data2 (file begin finish lang)
   (let (text)
     (with-temp-buffer
@@ -1032,11 +1001,7 @@ Ordinary no need to change this."
 (defun langtool-server--http-post (buffer host port data)
   (let ((client (open-network-stream
                  "LangtoolHttpClient" buffer host port
-                 :type 'plain
-                 ;; Use non-blocking socket if we can.
-                 ;; :nowait (featurep 'make-network-process
-                 ;;                   '(:nowait t))
-                 )))
+                 :type 'plain)))
     (process-send-string
      client
      (concat
