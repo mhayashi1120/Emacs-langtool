@@ -772,28 +772,29 @@ Ordinary no need to change this."
   (unless (process-live-p proc)
     (let ((code (process-exit-status proc))
           (pbuf (process-buffer proc))
+          (source (process-get proc 'langtool-source-buffer))
           dead marks errmsg face)
       (cond
        ((buffer-live-p pbuf)
-        ;; Get first line of output.
-        (with-current-buffer pbuf
-          (goto-char (point-min))
-          (setq errmsg
-                (format "LanguageTool exited abnormally with code %d (%s)"
-                        code (buffer-substring (point) (point-at-eol)))))
+        (when (/= code 0)
+          ;; Get first line of output.
+          (with-current-buffer pbuf
+            (goto-char (point-min))
+            (setq errmsg
+                  (format "LanguageTool exited abnormally with code %d (%s)"
+                          code (buffer-substring (point) (point-at-eol))))))
         (kill-buffer pbuf))
        (t
         (setq errmsg "Buffer was dead")))
-      (langtool--check-finish proc (/= code 0) errmsg))))
+      (langtool--check-finish source errmsg))))
 
 ;;
 ;; TODO share
 ;;
 
-(defun langtool--check-finish (proc fatal-error-p errmsg)
-  (let ((source (process-get proc 'langtool-source-buffer))
-        marks face dead) 
-    (when fatal-error-p
+(defun langtool--check-finish (source errmsg)
+  (let (marks face) 
+    (when errmsg
       (setq face compilation-error-face))
     (cond
      ((buffer-live-p source)
@@ -803,22 +804,21 @@ Ordinary no need to change this."
         (setq langtool-buffer-process nil)
         (setq langtool-mode-line-message
               (list " Langtool"
-                    (propertize ":exit" 'face face)))))
-     (t (setq dead t)))
-    (cond
-     (dead)
-     (fatal-error-p
-      (message "%s" errmsg))
-     (marks
-      ;; TODO this hook run in source buffer
-      (run-hooks 'langtool-error-exists-hook)
-      (message "%s"
-               (substitute-command-keys
-                "Type \\[langtool-correct-buffer] to correct buffer.")))
-     (t
-      ;; TODO this hook run in source buffer
-      (run-hooks 'langtool-noerror-hook)
-      (message "LanguageTool successfully finished with no error.")))))
+                    (propertize ":exit" 'face face)))
+        (cond
+         (errmsg
+          (message "%s" errmsg))
+         (marks
+          ;; TODO this hook run in source buffer
+          (run-hooks 'langtool-error-exists-hook)
+          (message "%s"
+                   (substitute-command-keys
+                    "Type \\[langtool-correct-buffer] to correct buffer.")))
+         (t
+          ;; TODO this hook run in source buffer
+          (run-hooks 'langtool-noerror-hook)
+          (message "LanguageTool successfully finished with no error.")))))
+     (t ))))
 
 ;;
 ;; LanguageTool HTTP Server <-> Client
