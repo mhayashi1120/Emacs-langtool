@@ -857,28 +857,6 @@ Ordinary no need to change this."
         (kill-buffer buffer))))
   (setq langtool-server--process nil))
 
-(defun langtool-server--ensure-running ()
-  (langtool-server--check-command)
-  (unless (and (processp langtool-server--process)
-               (eq (process-status langtool-server--process) 'run))
-    (setq langtool-server--process nil)
-    (let* ((args '()))
-      ;; jar Default setting is "HTTPSServer" .
-      ;; This application no need to use SSL since local app.
-      ;; http://wiki.languagetool.org/http-server
-      (setq args (append args (list "org.languagetool.server.HTTPServer")))
-      (setq args (append args langtool-server-user-arguments))
-      (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
-             (proc (apply
-                    'start-process
-                    "LangtoolHttpServer" buffer
-                    langtool-java-bin
-                    "-cp" langtool-language-tool-server-jar
-                    args)))
-        (langtool-server--rendezvous proc buffer)
-        (setq langtool-server--process proc))))
-  langtool-server--process)
-
 (defun langtool-server--parse-initial-buffer ()
   (save-excursion
     (goto-char (point-min))
@@ -924,15 +902,27 @@ Ordinary no need to change this."
           (message "%s." (current-message))
           (accept-process-output proc 0.1 nil t))))))
 
-(defun langtool-client--invoke-process (file begin finish &optional lang)
-  (let* ((data (langtool-client--make-post-data  file begin finish lang))
-         (proc (langtool-client--http-post langtool-server--process data)))
-    (set-process-sentinel proc 'langtool-client--process-sentinel)
-    (set-process-filter proc 'langtool-client--process-filter)
-    (process-put proc 'langtool-source-buffer (current-buffer))
-    (process-put proc 'langtool-region-begin begin)
-    (process-put proc 'langtool-region-finish finish)
-    proc))
+(defun langtool-server--ensure-running ()
+  (langtool-server--check-command)
+  (unless (and (processp langtool-server--process)
+               (eq (process-status langtool-server--process) 'run))
+    (setq langtool-server--process nil)
+    (let* ((args '()))
+      ;; jar Default setting is "HTTPSServer" .
+      ;; This application no need to use SSL since local app.
+      ;; http://wiki.languagetool.org/http-server
+      (setq args (append args (list "org.languagetool.server.HTTPServer")))
+      (setq args (append args langtool-server-user-arguments))
+      (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
+             (proc (apply
+                    'start-process
+                    "LangtoolHttpServer" buffer
+                    langtool-java-bin
+                    "-cp" langtool-language-tool-server-jar
+                    args)))
+        (langtool-server--rendezvous proc buffer)
+        (setq langtool-server--process proc))))
+  langtool-server--process)
 
 (defun langtool-client--parse-response-body ()
   (let* ((json (json-read))
@@ -967,7 +957,7 @@ Ordinary no need to change this."
           errmsg n-tuple)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
-            (langtool-client--parse-http-response-header)
+            (langtool-http--parse-response-header)
           (goto-char body-start)
           (setq n-tuple (langtool-client--parse-response-body))
           (kill-buffer pbuf)))
@@ -1022,7 +1012,17 @@ Ordinary no need to change this."
     (process-send-eof client)
     client))
 
-(defun langtool-client--parse-http-response-header ()
+(defun langtool-client--invoke-process (file begin finish &optional lang)
+  (let* ((data (langtool-client--make-post-data  file begin finish lang))
+         (proc (langtool-client--http-post langtool-server--process data)))
+    (set-process-sentinel proc 'langtool-client--process-sentinel)
+    (set-process-filter proc 'langtool-client--process-filter)
+    (process-put proc 'langtool-source-buffer (current-buffer))
+    (process-put proc 'langtool-region-begin begin)
+    (process-put proc 'langtool-region-finish finish)
+    proc))
+
+(defun langtool-http--parse-response-header ()
   ;; Not a exact parser. Just a necessary. ;-)
   (save-excursion
     (goto-char (point-min))
