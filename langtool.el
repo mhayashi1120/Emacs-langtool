@@ -731,10 +731,6 @@ Ordinary no need to change this."
     (insert event)
     (let ((min (or (process-get proc 'langtool-process-done)
                    (point-min)))
-          (buffer (process-get proc 'langtool-source-buffer))
-          (begin (process-get proc 'langtool-region-begin))
-          (finish (process-get proc 'langtool-region-finish))
-          (version (process-get proc 'langtool-jar-version))
           n-tuple)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
@@ -757,16 +753,7 @@ Ordinary no need to change this."
                                msg1 message rule-id context)
                          n-tuple))))
       (process-put proc 'langtool-process-done (point))
-      (when (buffer-live-p buffer)
-        (with-current-buffer buffer
-          (save-excursion
-            (save-restriction
-              (when (and begin finish)
-                (narrow-to-region begin finish))
-              (mapc
-               (lambda (tuple)
-                 (langtool--create-overlay version tuple))
-               (nreverse n-tuple)))))))))
+      (langtool--apply-checks proc n-tuple))))
 
 (defun langtool-command--process-sentinel (proc event)
   (unless (process-live-p proc)
@@ -791,6 +778,24 @@ Ordinary no need to change this."
 ;;
 ;; TODO share
 ;;
+
+(defun langtool--apply-checks (proc n-tuple)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        (version (or (process-get proc 'langtool-jar-version)
+                     ;; TODO
+                     (process-get proc 'langtool-server-jar-version)))
+        (begin (process-get proc 'langtool-region-begin))
+        (finish (process-get proc 'langtool-region-finish)))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (save-excursion
+          (save-restriction
+            (when (and begin finish)
+              (narrow-to-region begin finish))
+            (mapc
+             (lambda (tuple)
+               (langtool--create-overlay version tuple))
+             (nreverse n-tuple))))))))
 
 (defun langtool--check-finish (source errmsg)
   (let (marks face) 
@@ -964,31 +969,19 @@ Ordinary no need to change this."
 ;; TODO cleanup buffer or else
 (defun langtool-server--process-sentinel (proc event)
   (unless (process-live-p proc)
-    (let ((pbuf (process-buffer proc)))
+    (let ((pbuf (process-buffer proc))
+          errmsg n-tuple)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
             (langtool-server--parse-http-response-header)
           (goto-char body-start)
-          ;;TODO check status, headers (Content-Type)
-          (let ((n-tuple (langtool-server--parse-response-body))
-                (source (process-get proc 'langtool-source-buffer))
-                (begin (process-get proc 'langtool-region-begin))
-                (finish (process-get proc 'langtool-region-finish))
-                (version (process-get proc 'langtool-server-jar-version)))
-            (when (buffer-live-p source)
-              (with-current-buffer source
-                (save-excursion
-                  (save-restriction
-                    (when (and begin finish)
-                      (narrow-to-region begin finish))
-                    (mapc
-                     (lambda (tuple)
-                       (langtool--create-overlay version tuple))
-                     (nreverse n-tuple))))
-                (setq langtool-buffer-process nil)
-                ;; TODO langtool-mode-line-message
-                ;; TODO hook
-                (kill-buffer pbuf)))))))))
+          (setq n-tuple (langtool-server--parse-response-body))
+          (kill-buffer pbuf)))
+      ;;TODO check status, headers (Content-Type)
+
+      (langtool--apply-checks proc n-tuple)
+      (let ((source (process-get proc 'langtool-source-buffer)))
+        (langtool--check-finish source errmsg)))))
 
 (defun langtool-server--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
