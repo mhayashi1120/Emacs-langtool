@@ -281,13 +281,23 @@ Do not change this variable if you don't understand what you are doing.
           function))
 
 (defcustom langtool-server-user-arguments nil
-  "TODO
-TODO about --config propertyFile
-java -jar ~/lib/java/LanguageTool-4.0/languagetool-server.jar"
+  "languagetool-server.jar customize arguments.
+You can pass `--config' option to the server that indicate java property file.
+
+You can see all valid arguments with following command (Replace path by yourself):
+java -jar /path/to/languagetool-server.jar --help
+"
   :group 'langtool
   :type '(choice
           (repeat string)
           function))
+
+(defcustom langtool-client-filter-query-function nil
+  "Filter function that accept one query form argument.
+This query form is an alist will be encoded by `url-build-query-string'.
+Call just before POST with `application/x-www-form-urlencoded'."
+  :group 'langtool
+  :type 'function)
 
 (defcustom langtool-error-exists-hook
   '(langtool-autoshow-ensure-timer)
@@ -1017,8 +1027,11 @@ Ordinary no need to change this."
                            `(("motherTongue" ,langtool-mother-tongue)))
                     ("disabled" ,disabled-rules)
                     ))
-           ;; TODO filter customizable function 
-           (query-string (url-build-query-string query)))
+           query-string)
+      (when (and langtool-client-filter-query-function
+                 (functionp langtool-client-filter-query-function))
+        (setq query (funcall langtool-client-filter-query-function query)))
+      (setq query-string (url-build-query-string query))
       query-string)))
 
 (defun langtool-client--http-post (server data)
