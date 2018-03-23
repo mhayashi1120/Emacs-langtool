@@ -924,17 +924,17 @@ Ordinary no need to change this."
           (message "%s." (current-message))
           (accept-process-output proc 0.1 nil t))))))
 
-(defun langtool-server--invoke-client (file begin finish &optional lang)
-  (let* ((data (langtool-server--make-post-data  file begin finish lang))
-         (proc (langtool-server--http-post langtool-server--process data)))
-    (set-process-sentinel proc 'langtool-server--process-sentinel)
-    (set-process-filter proc 'langtool-server--process-filter)
+(defun langtool-client--invoke-process (file begin finish &optional lang)
+  (let* ((data (langtool-client--make-post-data  file begin finish lang))
+         (proc (langtool-client--http-post langtool-server--process data)))
+    (set-process-sentinel proc 'langtool-client--process-sentinel)
+    (set-process-filter proc 'langtool-client--process-filter)
     (process-put proc 'langtool-source-buffer (current-buffer))
     (process-put proc 'langtool-region-begin begin)
     (process-put proc 'langtool-region-finish finish)
     proc))
 
-(defun langtool-server--parse-response-body ()
+(defun langtool-client--parse-response-body ()
   (let* ((json (json-read))
          (matches (cdr (assoc 'matches json)))
          n-tuple)
@@ -961,15 +961,15 @@ Ordinary no need to change this."
                                  n-tuple))))
     n-tuple))
 
-(defun langtool-server--process-sentinel (proc event)
+(defun langtool-client--process-sentinel (proc event)
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
           errmsg n-tuple)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
-            (langtool-server--parse-http-response-header)
+            (langtool-client--parse-http-response-header)
           (goto-char body-start)
-          (setq n-tuple (langtool-server--parse-response-body))
+          (setq n-tuple (langtool-client--parse-response-body))
           (kill-buffer pbuf)))
       ;;TODO check status, headers (Content-Type) errmsg
       
@@ -977,13 +977,13 @@ Ordinary no need to change this."
       (let ((source (process-get proc 'langtool-source-buffer)))
         (langtool--check-finish source errmsg)))))
 
-(defun langtool-server--process-filter (proc event)
+(defun langtool-client--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
   (with-current-buffer (process-buffer proc)
     (goto-char (point-max))
     (insert event)))
 
-(defun langtool-server--make-post-data (file begin finish lang)
+(defun langtool-client--make-post-data (file begin finish lang)
   (let (text)
     (with-temp-buffer
       (insert-file-contents file)
@@ -1003,7 +1003,7 @@ Ordinary no need to change this."
            (query-string (url-build-query-string query)))
       query-string)))
 
-(defun langtool-server--http-post (server data)
+(defun langtool-client--http-post (server data)
   (let* ((host (process-get server 'langtool-server-host))
          (port (process-get server 'langtool-server-port))
          (buffer (langtool--process-create-buffer))
@@ -1022,7 +1022,7 @@ Ordinary no need to change this."
     (process-send-eof client)
     client))
 
-(defun langtool-server--parse-http-response-header ()
+(defun langtool-client--parse-http-response-header ()
   ;; Not a exact parser. Just a necessary. ;-)
   (save-excursion
     (goto-char (point-min))
@@ -1065,7 +1065,7 @@ Ordinary no need to change this."
        (setq proc (langtool-command--invoke-process file begin finish lang)))
       ('http
        (langtool-server--ensure-running)
-       (setq proc (langtool-server--invoke-client file begin finish lang))))
+       (setq proc (langtool-client--invoke-process file begin finish lang))))
     (setq langtool-buffer-process proc)
     ;; TODO and show HTTP Server status?
     (setq langtool-mode-line-message
