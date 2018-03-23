@@ -770,43 +770,55 @@ Ordinary no need to change this."
 
 (defun langtool-command--process-sentinel (proc event)
   (unless (process-live-p proc)
-    (let ((source (process-get proc 'langtool-source-buffer))
-          (code (process-exit-status proc))
+    (let ((code (process-exit-status proc))
           (pbuf (process-buffer proc))
           dead marks errmsg face)
-      (when (/= code 0)
-        (setq face compilation-error-face)
-        (setq errmsg (if (buffer-live-p pbuf)
-                         ;; Get first line of output.
-                         (with-current-buffer pbuf
-                           (goto-char (point-min))
-                           (buffer-substring (point) (point-at-eol)))
-                       "Buffer was dead")))
       (cond
-       ((buffer-live-p source)
-        (with-current-buffer source
-          (setq marks (langtool--overlays-region (point-min) (point-max)))
-          (setq face (or face (if marks compilation-info-face compilation-warning-face)))
-          (setq langtool-buffer-process nil)
-          (setq langtool-mode-line-message
-                (list " Langtool"
-                      (propertize ":exit" 'face face)))))
-       (t (setq dead t)))
-      (cond
-       (dead)
-       ((/= code 0)
-        (message "LanguageTool exited abnormally with code %d (%s)"
-                 code errmsg))
-       (marks
-        (run-hooks 'langtool-error-exists-hook)
-        (message "%s"
-                 (substitute-command-keys
-                  "Type \\[langtool-correct-buffer] to correct buffer.")))
+       ((buffer-live-p pbuf)
+        ;; Get first line of output.
+        (with-current-buffer pbuf
+          (goto-char (point-min))
+          (setq errmsg
+                (format "LanguageTool exited abnormally with code %d (%s)"
+                        code (buffer-substring (point) (point-at-eol)))))
+        (kill-buffer pbuf))
        (t
-        (run-hooks 'langtool-noerror-hook)
-        (message "LanguageTool successfully finished with no error.")))
-      (when (buffer-live-p pbuf)
-        (kill-buffer pbuf)))))
+        (setq errmsg "Buffer was dead")))
+      (langtool--check-finish proc (/= code 0) errmsg))))
+
+;;
+;; TODO share
+;;
+
+(defun langtool--check-finish (proc fatal-error-p errmsg)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        marks face dead) 
+    (when fatal-error-p
+      (setq face compilation-error-face))
+    (cond
+     ((buffer-live-p source)
+      (with-current-buffer source
+        (setq marks (langtool--overlays-region (point-min) (point-max)))
+        (setq face (or face (if marks compilation-info-face compilation-warning-face)))
+        (setq langtool-buffer-process nil)
+        (setq langtool-mode-line-message
+              (list " Langtool"
+                    (propertize ":exit" 'face face)))))
+     (t (setq dead t)))
+    (cond
+     (dead)
+     (fatal-error-p
+      (message "%s" errmsg))
+     (marks
+      ;; TODO this hook run in source buffer
+      (run-hooks 'langtool-error-exists-hook)
+      (message "%s"
+               (substitute-command-keys
+                "Type \\[langtool-correct-buffer] to correct buffer.")))
+     (t
+      ;; TODO this hook run in source buffer
+      (run-hooks 'langtool-noerror-hook)
+      (message "LanguageTool successfully finished with no error.")))))
 
 ;;
 ;; LanguageTool HTTP Server <-> Client
