@@ -773,9 +773,15 @@ Ordinary no need to change this."
     (let ((source (process-get proc 'langtool-source-buffer))
           (code (process-exit-status proc))
           (pbuf (process-buffer proc))
-          dead marks msg face)
+          dead marks errmsg face)
       (when (/= code 0)
-        (setq face compilation-error-face))
+        (setq face compilation-error-face)
+        (setq errmsg (if (buffer-live-p pbuf)
+                         ;; Get first line of output.
+                         (with-current-buffer pbuf
+                           (goto-char (point-min))
+                           (buffer-substring (point) (point-at-eol)))
+                       "Buffer was dead")))
       (cond
        ((buffer-live-p source)
         (with-current-buffer source
@@ -789,15 +795,8 @@ Ordinary no need to change this."
       (cond
        (dead)
        ((/= code 0)
-        (let ((msg
-               (if (buffer-live-p pbuf)
-                   ;; Get first line of output.
-                   (with-current-buffer pbuf
-                     (goto-char (point-min))
-                     (buffer-substring (point) (point-at-eol)))
-                 "Buffer was dead")))
-          (message "LanguageTool exited abnormally with code %d (%s)"
-                   code msg)))
+        (message "LanguageTool exited abnormally with code %d (%s)"
+                 code errmsg))
        (marks
         (run-hooks 'langtool-error-exists-hook)
         (message "%s"
@@ -920,6 +919,36 @@ Ordinary no need to change this."
     (process-put proc 'langtool-region-finish finish)
     proc))
 
+(defun langtool-server--parse-response-body ()
+  (let* ((json (json-read))
+         (matches (cdr (assoc 'matches json)))
+         n-tuple)
+    (dolist (match
+             ;; TODO
+             (append matches nil)
+             )
+      (let* ((offset (cdr (assoc 'offset match)))
+             (len (cdr (assoc 'length match)))
+             (rule (cdr (assoc 'rule match)))
+             (rule-id (cdr (assoc 'id rule)))
+             (replacements (cdr (assoc 'replacements rule)))
+             (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
+             (msg1 (cdr (assoc 'message match)))
+             ;; rest of line. Point the raw message.
+             (msg2 (cdr (assoc 'shortMessage match)))
+             (message
+              (concat "Rule ID: " rule-id "\n"
+                      msg1 "\n\n"
+                      msg2))
+             (context nil)
+             line column)
+        (setq n-tuple (cons
+                       (list line column len suggestions
+                             msg1 message rule-id context
+                             offset)
+                       n-tuple))))
+    n-tuple))
+
 ;; TODO cleanup buffer or else
 (defun langtool-server--process-sentinel (proc event)
   (unless (process-live-p proc)
@@ -929,37 +958,11 @@ Ordinary no need to change this."
             (langtool-server--parse-http-response-header)
           (goto-char body-start)
           ;;TODO check status, headers (Content-Type)
-          (let* ((json (json-read))
-                 (source (process-get proc 'langtool-source-buffer))
-                 (begin (process-get proc 'langtool-region-begin))
-                 (finish (process-get proc 'langtool-region-finish))
-                 (version (process-get proc 'langtool-server-jar-version))
-                 (matches (cdr (assoc 'matches json)))
-                 n-tuple)
-            (dolist (match
-                     ;; TODO
-                     (append matches nil)
-                     )
-              (let* ((offset (cdr (assoc 'offset match)))
-                     (len (cdr (assoc 'length match)))
-                     (rule (cdr (assoc 'rule match)))
-                     (rule-id (cdr (assoc 'id rule)))
-                     (replacements (cdr (assoc 'replacements rule)))
-                     (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
-                     (msg1 (cdr (assoc 'message match)))
-                     ;; rest of line. Point the raw message.
-                     (msg2 (cdr (assoc 'shortMessage match)))
-                     (message
-                      (concat "Rule ID: " rule-id "\n"
-                              msg1 "\n\n"
-                              msg2))
-                     (context nil)
-                     line column)
-                (setq n-tuple (cons
-                               (list line column len suggestions
-                                     msg1 message rule-id context
-                                     offset)
-                               n-tuple))))
+          (let ((n-tuple (langtool-server--parse-response-body))
+                (source (process-get proc 'langtool-source-buffer))
+                (begin (process-get proc 'langtool-region-begin))
+                (finish (process-get proc 'langtool-region-finish))
+                (version (process-get proc 'langtool-server-jar-version)))
             (when (buffer-live-p source)
               (with-current-buffer source
                 (save-excursion
@@ -973,8 +976,7 @@ Ordinary no need to change this."
                 (setq langtool-buffer-process nil)
                 ;; TODO langtool-mode-line-message
                 ;; TODO hook
-                (kill-buffer pbuf)
-                ))))))))
+                (kill-buffer pbuf)))))))))
 
 (defun langtool-server--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
