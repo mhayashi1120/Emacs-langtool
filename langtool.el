@@ -711,6 +711,60 @@ Ordinary no need to change this."
       regexp)))
 
 ;;
+;; Commandline / HTTP integration
+;;
+
+(defun langtool--checker-mode ()
+  (cond
+   (langtool-language-tool-server-jar
+    'http)
+   ((or langtool-language-tool-jar
+        langtool-java-classpath)
+    'commandline)
+   (t
+    (error "There is no valid setting."))))
+
+(defun langtool--apply-checks (proc n-tuple)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        (version (process-get proc 'langtool-jar-version))
+        (begin (process-get proc 'langtool-region-begin))
+        (finish (process-get proc 'langtool-region-finish)))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (save-excursion
+          (save-restriction
+            (when (and begin finish)
+              (narrow-to-region begin finish))
+            (mapc
+             (lambda (tuple)
+               (langtool--create-overlay version tuple))
+             (nreverse n-tuple))))))))
+
+(defun langtool--check-finish (source errmsg)
+  (let (marks face) 
+    (when errmsg
+      (setq face compilation-error-face))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (setq marks (langtool--overlays-region (point-min) (point-max)))
+        (setq face (or face (if marks compilation-info-face compilation-warning-face)))
+        (setq langtool-buffer-process nil)
+        (setq langtool-mode-line-message
+              (list " Langtool"
+                    (propertize ":exit" 'face face)))
+        (cond
+         (errmsg
+          (message "%s" errmsg))
+         (marks
+          (run-hooks 'langtool-error-exists-hook)
+          (message "%s"
+                   (substitute-command-keys
+                    "Type \\[langtool-correct-buffer] to correct buffer.")))
+         (t
+          (run-hooks 'langtool-noerror-hook)
+          (message "LanguageTool successfully finished with no error.")))))))
+
+;;
 ;; LanguageTool Commandline
 ;;
 
@@ -807,60 +861,6 @@ Ordinary no need to change this."
        (t
         (setq errmsg "Buffer was dead")))
       (langtool--check-finish source errmsg))))
-
-;;
-;; TODO share
-;;
-
-(defun langtool--checker-mode ()
-  (cond
-   (langtool-language-tool-server-jar
-    'http)
-   ((or langtool-language-tool-jar
-        langtool-java-classpath)
-    'commandline)
-   (t
-    (error "TODO"))))
-
-(defun langtool--apply-checks (proc n-tuple)
-  (let ((source (process-get proc 'langtool-source-buffer))
-        (version (process-get proc 'langtool-jar-version))
-        (begin (process-get proc 'langtool-region-begin))
-        (finish (process-get proc 'langtool-region-finish)))
-    (when (buffer-live-p source)
-      (with-current-buffer source
-        (save-excursion
-          (save-restriction
-            (when (and begin finish)
-              (narrow-to-region begin finish))
-            (mapc
-             (lambda (tuple)
-               (langtool--create-overlay version tuple))
-             (nreverse n-tuple))))))))
-
-(defun langtool--check-finish (source errmsg)
-  (let (marks face) 
-    (when errmsg
-      (setq face compilation-error-face))
-    (when (buffer-live-p source)
-      (with-current-buffer source
-        (setq marks (langtool--overlays-region (point-min) (point-max)))
-        (setq face (or face (if marks compilation-info-face compilation-warning-face)))
-        (setq langtool-buffer-process nil)
-        (setq langtool-mode-line-message
-              (list " Langtool"
-                    (propertize ":exit" 'face face)))
-        (cond
-         (errmsg
-          (message "%s" errmsg))
-         (marks
-          (run-hooks 'langtool-error-exists-hook)
-          (message "%s"
-                   (substitute-command-keys
-                    "Type \\[langtool-correct-buffer] to correct buffer.")))
-         (t
-          (run-hooks 'langtool-noerror-hook)
-          (message "LanguageTool successfully finished with no error.")))))))
 
 ;;
 ;; LanguageTool HTTP Server <-> Client
