@@ -786,7 +786,7 @@ Ordinary no need to change this."
        ((buffer-live-p source)
         (with-current-buffer source
           (setq marks (langtool--overlays-region (point-min) (point-max)))
-          (setq face (if marks compilation-info-face compilation-warning-face))
+          (setq face (or face (if marks compilation-info-face compilation-warning-face)))
           (setq langtool-buffer-process nil)
           (setq langtool-mode-line-message
                 (list " Langtool"
