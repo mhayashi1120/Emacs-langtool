@@ -367,6 +367,38 @@ java -jar ~/lib/java/LanguageTool-4.0/languagetool-server.jar"
   (make-temp-file "langtool-"))
 
 ;;
+;; HTTP basic
+;;
+
+(defun langtool-http--parse-response-header ()
+  ;; Not a exact parser. Just a necessary. ;-)
+  (save-excursion
+    (goto-char (point-min))
+    (unless (re-search-forward "^\r\n" nil t)
+      (error "Parse error. Not found http header separator."))
+    (let (status headers body-start)
+      (setq body-start (point))
+      (forward-line -1)
+      (save-restriction
+        (narrow-to-region (point-min) (point))
+        (goto-char (point-min))
+        (unless (looking-at "^HTTP/[0-9.]+[\s\t]+\\([0-9]+\\)")
+          (error "Parse error. Not found HTTP status code"))
+        (setq status (string-to-number (match-string-no-properties 1)))
+        (forward-line)
+        (while (not (eobp))
+          (let (key value)
+            (unless (looking-at "^\\([^:]+\\):")
+              (error "Invalid header of HTTP response"))
+            (setq key (match-string-no-properties 1))
+            (goto-char (match-end 0))
+            (while (looking-at "[\s\t]+\\(.*\\)\r")
+              (setq value (concat value (match-string-no-properties 1)))
+              (forward-line 1))
+            (setq headers (cons (cons key value) headers))))
+        (list status headers body-start)))))
+
+;;
 ;; handle error overlay
 ;;
 
@@ -986,8 +1018,6 @@ Ordinary no need to change this."
                     ,@(and langtool-mother-tongue
                            `(("motherTongue" ,langtool-mother-tongue)))
                     ("disabled" ,disabled-rules)
-                    ;; TODO
-                    ;; ("token" "c19cc99080c5a9d436f6fc1b696a5c1e")
                     ))
            ;; TODO filter customizable function 
            (query-string (url-build-query-string query)))
@@ -1022,36 +1052,8 @@ Ordinary no need to change this."
     (process-put proc 'langtool-region-finish finish)
     proc))
 
-(defun langtool-http--parse-response-header ()
-  ;; Not a exact parser. Just a necessary. ;-)
-  (save-excursion
-    (goto-char (point-min))
-    (unless (re-search-forward "^\r\n" nil t)
-      (error "Parse error. Not found http header separator."))
-    (let (status headers body-start)
-      (setq body-start (point))
-      (forward-line -1)
-      (save-restriction
-        (narrow-to-region (point-min) (point))
-        (goto-char (point-min))
-        (unless (looking-at "^HTTP/[0-9.]+[\s\t]+\\([0-9]+\\)")
-          (error "Parse error. Not found HTTP status code"))
-        (setq status (string-to-number (match-string-no-properties 1)))
-        (forward-line)
-        (while (not (eobp))
-          (let (key value)
-            (unless (looking-at "^\\([^:]+\\):")
-              (error "Invalid header of HTTP response"))
-            (setq key (match-string-no-properties 1))
-            (goto-char (match-end 0))
-            (while (looking-at "[\s\t]+\\(.*\\)\r")
-              (setq value (concat value (match-string-no-properties 1)))
-              (forward-line 1))
-            (setq headers (cons (cons key value) headers))))
-        (list status headers body-start)))))
-
 ;;
-;; TODO caller HTTP or commandline interface
+;; HTTP or commandline interface caller
 ;;
 
 (defun langtool--invoke-checker-process (file begin finish &optional lang)
@@ -1072,7 +1074,6 @@ Ordinary no need to change this."
           (list " Langtool"
                 (propertize ":run" 'face compilation-info-face)))))
 
-;; TODO cleanup HTTP Server?
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
   (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
