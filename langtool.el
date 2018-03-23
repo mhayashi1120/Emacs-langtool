@@ -824,9 +824,7 @@ Ordinary no need to change this."
 
 (defun langtool--apply-checks (proc n-tuple)
   (let ((source (process-get proc 'langtool-source-buffer))
-        (version (or (process-get proc 'langtool-jar-version)
-                     ;; TODO
-                     (process-get proc 'langtool-server-jar-version)))
+        (version (process-get proc 'langtool-jar-version))
         (begin (process-get proc 'langtool-region-begin))
         (finish (process-get proc 'langtool-region-finish)))
     (when (buffer-live-p source)
@@ -925,7 +923,7 @@ Ordinary no need to change this."
                        version))
               (process-put proc 'langtool-server-host host)
               (process-put proc 'langtool-server-port port)
-              (process-put proc 'langtool-server-jar-version version)
+              (process-put proc 'langtool-jar-version version)
               (message "%s done." (current-message))
               (throw 'rendezvous t)))
           (unless (eq (process-status proc) 'run)
