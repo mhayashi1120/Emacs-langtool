@@ -779,6 +779,16 @@ Ordinary no need to change this."
 ;; TODO share
 ;;
 
+(defun langtool--client-mode ()
+  (cond
+   (langtool-language-tool-server-jar
+    'http)
+   ((or langtool-language-tool-jar
+        langtool-java-classpath)
+    'commandline)
+   (t
+    (error "TODO"))))
+
 (defun langtool--apply-checks (proc n-tuple)
   (let ((source (process-get proc 'langtool-source-buffer))
         (version (or (process-get proc 'langtool-jar-version)
@@ -801,8 +811,7 @@ Ordinary no need to change this."
   (let (marks face) 
     (when errmsg
       (setq face compilation-error-face))
-    (cond
-     ((buffer-live-p source)
+    (when (buffer-live-p source)
       (with-current-buffer source
         (setq marks (langtool--overlays-region (point-min) (point-max)))
         (setq face (or face (if marks compilation-info-face compilation-warning-face)))
@@ -814,16 +823,13 @@ Ordinary no need to change this."
          (errmsg
           (message "%s" errmsg))
          (marks
-          ;; TODO this hook run in source buffer
           (run-hooks 'langtool-error-exists-hook)
           (message "%s"
                    (substitute-command-keys
                     "Type \\[langtool-correct-buffer] to correct buffer.")))
          (t
-          ;; TODO this hook run in source buffer
           (run-hooks 'langtool-noerror-hook)
-          (message "LanguageTool successfully finished with no error.")))))
-     (t ))))
+          (message "LanguageTool successfully finished with no error.")))))))
 
 ;;
 ;; LanguageTool HTTP Server <-> Client
@@ -966,7 +972,6 @@ Ordinary no need to change this."
                        n-tuple))))
     n-tuple))
 
-;; TODO cleanup buffer or else
 (defun langtool-server--process-sentinel (proc event)
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
@@ -977,8 +982,8 @@ Ordinary no need to change this."
           (goto-char body-start)
           (setq n-tuple (langtool-server--parse-response-body))
           (kill-buffer pbuf)))
-      ;;TODO check status, headers (Content-Type)
-
+      ;;TODO check status, headers (Content-Type) errmsg
+      
       (langtool--apply-checks proc n-tuple)
       (let ((source (process-get proc 'langtool-source-buffer)))
         (langtool--check-finish source errmsg)))))
@@ -1062,16 +1067,6 @@ Ordinary no need to change this."
 ;;
 ;; TODO caller HTTP or commandline interface
 ;;
-
-(defun langtool--client-mode ()
-  (cond
-   (langtool-language-tool-server-jar
-    'http)
-   ((or langtool-language-tool-jar
-        langtool-java-classpath)
-    'commandline)
-   (t
-    (error "TODO"))))
 
 (defun langtool--invoke-process (file begin finish &optional lang)
   (when (listp mode-line-process)
