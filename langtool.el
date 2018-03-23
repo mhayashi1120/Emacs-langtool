@@ -282,7 +282,7 @@ Do not change this variable if you don't understand what you are doing.
 (defcustom langtool-server-user-arguments nil
   "TODO
 TODO about --config propertyFile
-java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
+java -jar ~/lib/java/LanguageTool-4.0/languagetool-server.jar"
   :group 'langtool
   :type '(choice
           (repeat string)
@@ -351,7 +351,7 @@ java -jar /home/masa/lib/java/LanguageTool-4.0/languagetool-server.jar"
 
 (defun langtool--debug (key fmt &rest args)
   (when langtool--debug
-    (let ((buf (get-buffer-create "*LanguageTool Debug*")))
+    (let ((buf (get-buffer-create "*Langtool Debug*")))
       (with-current-buffer buf
         (goto-char (point-max))
         (insert "---------- [" key "] ----------\n")
@@ -626,7 +626,7 @@ Ordinary no need to change this."
 
 ;; TODO remove function?
 (defun langtool--process-create-buffer ()
-  (generate-new-buffer " *LanguageTool* "))
+  (generate-new-buffer " *Langtool* "))
 
 (defun langtool--sentence-to-fuzzy (sentence)
   (mapconcat 'regexp-quote
@@ -783,7 +783,7 @@ Ordinary no need to change this."
           (setq face (if marks compilation-info-face compilation-warning-face))
           (setq langtool-buffer-process nil)
           (setq langtool-mode-line-message
-                (list " LanguageTool"
+                (list " Langtool"
                       (propertize ":exit" 'face face)))))
        (t (setq dead t)))
       (cond
@@ -839,12 +839,19 @@ Ordinary no need to change this."
   (unless (and (processp langtool-server--process)
                (eq (process-status langtool-server--process) 'run))
     (setq langtool-server--process nil)
-    (let ((args '()))
+    (let* ((args '())
+           ;; (token (langtool--create-secret-token))
+           ;; (config-file (langtool-server--make-config-file 
+           ;;               (list
+           ;;                (cons "secretTokenKey" token))))
+           )
       ;; jar Default setting is "HTTPSServer" .
       ;; This application no need to use SSL since local app.
       ;; http://wiki.languagetool.org/http-server
       (setq args (append args (list "org.languagetool.server.HTTPServer")))
       (setq args (append args langtool-server-user-arguments))
+      ;; TODO
+      ;; (setq args (append args (list "--config" config-file)))
       (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
              (proc (apply
                     'start-process
@@ -857,6 +864,7 @@ Ordinary no need to change this."
           ;;TODO error show message
           (langtool-server-ensure-stop proc)
           (error "Unable start LanguageTool Server"))
+        ;; (process-put proc 'langtool-server-secret-token token)
         (setq langtool-server--process proc))))
   langtool-server--process)
 
@@ -903,11 +911,8 @@ Ordinary no need to change this."
           (accept-process-output proc 0.1 nil t))))))
 
 (defun langtool-server--invoke-client (file begin finish &optional lang)
-  (let* ((data (langtool-server--make-post-data2  file begin finish lang))
-         (host (process-get langtool-server--process 'langtool-server-host))
-         (port (process-get langtool-server--process 'langtool-server-port))
-         (buffer (langtool--process-create-buffer))
-         (proc (langtool-server--http-post buffer host port data)))
+  (let* ((data (langtool-server--make-post-data  file begin finish lang))
+         (proc (langtool-server--http-post langtool-server--process data)))
     (set-process-sentinel proc 'langtool-server--process-sentinel)
     (set-process-filter proc 'langtool-server--process-filter)
     (process-put proc 'langtool-source-buffer (current-buffer))
@@ -920,56 +925,56 @@ Ordinary no need to change this."
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc)))
       (with-current-buffer pbuf
-        ;; TODO make lazy
-        (goto-char (point-min))
-        ;;TODO parse header
-        (unless (re-search-forward "^\r\n" nil t)
-          (error "TODO Header not found"))
-        (let* ((json (json-read))
-               (source (process-get proc 'langtool-source-buffer))
-               (begin (process-get proc 'langtool-region-begin))
-               (finish (process-get proc 'langtool-region-finish))
-               (version (process-get proc 'langtool-server-jar-version))
-               (matches (cdr (assoc 'matches json)))
-               n-tuple)
-          (dolist (match
-                   ;; TODO
-                   (append matches nil)
-                   )
-            (let* ((offset (cdr (assoc 'offset match)))
-                   (len (cdr (assoc 'length match)))
-                   (rule (cdr (assoc 'rule match)))
-                   (rule-id (cdr (assoc 'id rule)))
-                   (replacements (cdr (assoc 'replacements rule)))
-                   (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
-                   (msg1 (cdr (assoc 'message match)))
-                   ;; rest of line. Point the raw message.
-                   (msg2 (cdr (assoc 'shortMessage match)))
-                   (message
-                    (concat "Rule ID: " rule-id "\n"
-                            msg1 "\n\n"
-                            msg2))
-                   (context nil)
-                   line column)
-              (setq n-tuple (cons
-                             (list line column len suggestions
-                                   msg1 message rule-id context
-                                   offset)
-                             n-tuple))))
-          (when (buffer-live-p source)
-            (with-current-buffer source
-              (save-excursion
-                (save-restriction
-                  (when (and begin finish)
-                    (narrow-to-region begin finish))
-                  (mapc
-                   (lambda (tuple)
-                     (langtool--create-overlay version tuple))
-                   (nreverse n-tuple))))
-              (setq langtool-buffer-process nil)
-              ;; TODO langtool-mode-line-message
-              ;; TODO hook
-              (kill-buffer pbuf))))))))
+        (cl-destructuring-bind (status headers body-start)
+            (langtool-server--parse-http-response-header)
+          (goto-char body-start)
+          ;;TODO check status, headers (Content-Type)
+          (let* ((json (json-read))
+                 (source (process-get proc 'langtool-source-buffer))
+                 (begin (process-get proc 'langtool-region-begin))
+                 (finish (process-get proc 'langtool-region-finish))
+                 (version (process-get proc 'langtool-server-jar-version))
+                 (matches (cdr (assoc 'matches json)))
+                 n-tuple)
+            (dolist (match
+                     ;; TODO
+                     (append matches nil)
+                     )
+              (let* ((offset (cdr (assoc 'offset match)))
+                     (len (cdr (assoc 'length match)))
+                     (rule (cdr (assoc 'rule match)))
+                     (rule-id (cdr (assoc 'id rule)))
+                     (replacements (cdr (assoc 'replacements rule)))
+                     (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
+                     (msg1 (cdr (assoc 'message match)))
+                     ;; rest of line. Point the raw message.
+                     (msg2 (cdr (assoc 'shortMessage match)))
+                     (message
+                      (concat "Rule ID: " rule-id "\n"
+                              msg1 "\n\n"
+                              msg2))
+                     (context nil)
+                     line column)
+                (setq n-tuple (cons
+                               (list line column len suggestions
+                                     msg1 message rule-id context
+                                     offset)
+                               n-tuple))))
+            (when (buffer-live-p source)
+              (with-current-buffer source
+                (save-excursion
+                  (save-restriction
+                    (when (and begin finish)
+                      (narrow-to-region begin finish))
+                    (mapc
+                     (lambda (tuple)
+                       (langtool--create-overlay version tuple))
+                     (nreverse n-tuple))))
+                (setq langtool-buffer-process nil)
+                ;; TODO langtool-mode-line-message
+                ;; TODO hook
+                (kill-buffer pbuf)
+                ))))))))
 
 (defun langtool-server--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
@@ -977,7 +982,7 @@ Ordinary no need to change this."
     (goto-char (point-max))
     (insert event)))
 
-(defun langtool-server--make-post-data2 (file begin finish lang)
+(defun langtool-server--make-post-data (file begin finish lang)
   (let (text)
     (with-temp-buffer
       (insert-file-contents file)
@@ -993,15 +998,20 @@ Ordinary no need to change this."
                     ,@(and langtool-mother-tongue
                            `(("motherTongue" ,langtool-mother-tongue)))
                     ("disabled" ,disabled-rules)
+                    ;; TODO
+                    ;; ("token" "c19cc99080c5a9d436f6fc1b696a5c1e")
                     ))
            ;; TODO filter customizable function 
            (query-string (url-build-query-string query)))
       query-string)))
 
-(defun langtool-server--http-post (buffer host port data)
-  (let ((client (open-network-stream
-                 "LangtoolHttpClient" buffer host port
-                 :type 'plain)))
+(defun langtool-server--http-post (server data)
+  (let* ((host (process-get server 'langtool-server-host))
+         (port (process-get server 'langtool-server-port))
+         (buffer (langtool--process-create-buffer))
+         (client (open-network-stream
+                  "LangtoolHttpClient" buffer host port
+                  :type 'plain)))
     (process-send-string
      client
      (concat
@@ -1013,6 +1023,34 @@ Ordinary no need to change this."
       data))
     (process-send-eof client)
     client))
+
+(defun langtool-server--parse-http-response-header ()
+  ;; Not a exact parser. Just a necessary. ;-)
+  (save-excursion
+    (goto-char (point-min))
+    (unless (re-search-forward "^\r\n" nil t)
+      (error "Parse error. Not found http header separator."))
+    (let (status headers body-start)
+      (setq body-start (point))
+      (forward-line -1)
+      (save-restriction
+        (narrow-to-region (point-min) (point))
+        (goto-char (point-min))
+        (unless (looking-at "^HTTP/[0-9.]+[\s\t]+\\([0-9]+\\)")
+          (error "Parse error. Not found HTTP status code"))
+        (setq status (string-to-number (match-string-no-properties 1)))
+        (forward-line)
+        (while (not (eobp))
+          (let (key value)
+            (unless (looking-at "^\\([^:]+\\):")
+              (error "Invalid header of HTTP response"))
+            (setq key (match-string-no-properties 1))
+            (goto-char (match-end 0))
+            (while (looking-at "[\s\t]+\\(.*\\)\r")
+              (setq value (concat value (match-string-no-properties 1)))
+              (forward-line 1))
+            (setq headers (cons (cons key value) headers))))
+        (list status headers body-start)))))
 
 ;;
 ;; TODO caller HTTP or commandline interface
@@ -1043,7 +1081,7 @@ Ordinary no need to change this."
     (setq langtool-buffer-process proc)
     ;; TODO and show HTTP Server status?
     (setq langtool-mode-line-message
-          (list " LanguageTool"
+          (list " Langtool"
                 (propertize ":run" 'face compilation-info-face)))))
 
 ;; TODO cleanup HTTP Server?
@@ -1505,8 +1543,8 @@ Restrict to selection when region is activated.
   (interactive)
   (setq langtool--debug (not langtool--debug))
   (if langtool--debug
-      (message "LanguageTool debug ON.")
-    (message "LanguageTool debug off.")))
+      (message "Langtool debug ON.")
+    (message "Langtool debug off.")))
 
 ;;;
 ;;; initialize
