@@ -44,8 +44,11 @@
 ;;     (require 'langtool)
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
-
-;;TODO (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+;;
+;; You can use HTTP server implementation which is now testing.
+;; This is very fast checking, but has security risk if there is multiple user on a same host. 
+;;
+;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
 
 ;; These settings are optional:
 
@@ -138,8 +141,8 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
-;; * change to --json argument to parse. Do not forget to parse partial json
-;;  in a process filter. Parsing whole json slow down Emacs
+;; * change to --json argument to parse. 
+;;    Parsing whole json slow down Emacs. Try to async/delay task library.
 
 ;;; Code:
 
@@ -233,8 +236,8 @@ No need to set this variable when `langtool-java-classpath' is set."
   :type 'file)
 
 (defcustom langtool-language-tool-server-jar nil
-  "LanguageTool server jar file.
-TODO this is now testing. Very fast, but Do not use it if there is unreliable user on a same host."
+  "LanguageTool server jar file. **This is now TESTING**.
+Very fast, but do not use it if there is unreliable user on a same host."
   :group 'langtool
   :type 'file)
 
@@ -667,8 +670,7 @@ Ordinary no need to change this."
                     (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))))
     (list command args)))
 
-;; TODO remove function?
-(defun langtool--process-create-buffer ()
+(defun langtool--process-create-client-buffer ()
   (generate-new-buffer " *Langtool* "))
 
 (defun langtool--sentence-to-fuzzy (sentence)
@@ -757,10 +759,14 @@ Ordinary no need to change this."
     (when (buffer-live-p source)
       (with-current-buffer source
         (setq marks (langtool--overlays-region (point-min) (point-max)))
-        (setq face (or face (if marks compilation-info-face compilation-warning-face)))
+        (setq face (or face (if marks
+                                ;; TODO ?? confused. is this wrong?
+                                compilation-info-face
+                              compilation-warning-face)))
         (setq langtool-buffer-process nil)
         (setq langtool-mode-line-message
-              (list " Langtool"
+              (list " "
+                    "Langtool"
                     (propertize ":exit" 'face face)))
         (cond
          (errmsg
@@ -810,7 +816,7 @@ Ordinary no need to change this."
       (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
       (setq args (append args (list (langtool--process-file-name file))))
       (langtool--debug "Command" "%s: %s" command args)
-      (let* ((buffer (langtool--process-create-buffer))
+      (let* ((buffer (langtool--process-create-client-buffer))
              (proc (langtool--with-java-environ
                     (apply 'start-process "LanguageTool" buffer command args))))
         (set-process-filter proc 'langtool-command--process-filter)
@@ -964,7 +970,7 @@ Ordinary no need to change this."
         (setq langtool-server--process proc))))
   langtool-server--process)
 
-(defun langtool-client--parse-response-body ()
+(defun langtool-client--parse-response-body/json ()
   (let* ((json (json-read))
          (matches (cdr (assoc 'matches json)))
          n-tuple)
@@ -991,6 +997,14 @@ Ordinary no need to change this."
                                  n-tuple))))
     n-tuple))
 
+(defun langtool-client--parse-response-body (http-headers)
+  (let ((ct (cdr (assoc-string "content-type" http-headers t))))
+    (cond
+     ((string= ct "application/json")
+      (langtool-client--parse-response-body/json))
+     (t
+      (error "Not a supported Content-Type %s" ct)))))
+
 (defun langtool-client--process-sentinel (proc event)
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
@@ -999,9 +1013,13 @@ Ordinary no need to change this."
         (cl-destructuring-bind (status headers body-start)
             (langtool-http--parse-response-header)
           (goto-char body-start)
-          (setq n-tuple (langtool-client--parse-response-body))
+          (cond
+           ((= status 200)
+            (setq n-tuple (langtool-client--parse-response-body headers)))
+           (t
+            ;;TODO test
+            (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
           (kill-buffer pbuf)))
-      ;;TODO check status, headers (Content-Type) errmsg
       
       (langtool--apply-checks proc n-tuple)
       (let ((source (process-get proc 'langtool-source-buffer)))
@@ -1037,15 +1055,16 @@ Ordinary no need to change this."
 (defun langtool-client--http-post (server data)
   (let* ((host (process-get server 'langtool-server-host))
          (port (process-get server 'langtool-server-port))
-         (buffer (langtool--process-create-buffer))
+         (buffer (langtool--process-create-client-buffer))
+         (url-path "/v2/check")
          (client (open-network-stream
                   "LangtoolHttpClient" buffer host port
                   :type 'plain)))
     (process-send-string
      client
      (concat
-      (format "POST /v2/check HTTP/1.1\r\n")
-      (format "Host: localhost\r\n")
+      (format "POST %s HTTP/1.1\r\n" url-path)
+      (format "Host: %s\r\n" host)
       (format "Content-length: %d\r\n" (length data))
       (format "Content-Type: application/x-www-form-urlencoded\r\n")
       (format "\r\n")
@@ -1082,7 +1101,8 @@ Ordinary no need to change this."
     (setq langtool-buffer-process proc)
     ;; TODO and show HTTP Server status?
     (setq langtool-mode-line-message
-          (list " Langtool"
+          (list " "
+                "Langtool"
                 (propertize ":run" 'face compilation-info-face)))))
 
 (defun langtool--cleanup-process ()
@@ -1090,7 +1110,8 @@ Ordinary no need to change this."
   (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
     (when cell
       (remq cell mode-line-process)))
-  (when langtool-buffer-process
+  (when (and langtool-buffer-process
+             (processp langtool-buffer-process))
     ;; TODO buffer killed, error. if process is local process (e.g. urllib)
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
