@@ -760,9 +760,8 @@ Ordinary no need to change this."
       (with-current-buffer source
         (setq marks (langtool--overlays-region (point-min) (point-max)))
         (setq face (or face (if marks
-                                ;; TODO ?? confused. is this wrong?
-                                compilation-info-face
-                              compilation-warning-face)))
+                                compilation-warning-face
+                              compilation-info-face)))
         (setq langtool-buffer-process nil)
         (setq langtool-mode-line-message
               (list " "
