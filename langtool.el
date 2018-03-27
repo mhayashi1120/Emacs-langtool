@@ -1016,7 +1016,6 @@ Ordinary no need to change this."
            ((= status 200)
             (setq n-tuple (langtool-client--parse-response-body headers)))
            (t
-            ;;TODO test
             (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
           (kill-buffer pbuf)))
       
@@ -1557,6 +1556,12 @@ Restrict to selection when region is activated.
                    "or type \\[langtool-check] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
+
+(defun langtool-server-stop ()
+  "Terminate LanguageTool HTTP server."
+  (interactive)
+  (langtool-server-ensure-stop)
+  (message "Server is terminated."))
 
 (defun langtool-toggle-debug ()
   "Toggle LanguageTool debugging."
