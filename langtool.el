@@ -142,7 +142,6 @@
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * change to --json argument to parse. 
-;;    Parsing whole json slow down Emacs. Try to async/delay task library.
 
 ;;; Code:
 
@@ -752,16 +751,39 @@ Ordinary no need to change this."
                (langtool--create-overlay version tuple))
              (nreverse n-tuple))))))))
 
+(defun langtool--lazy-apply-checks (proc n-tuple)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        (version (process-get proc 'langtool-jar-version))
+        (begin (process-get proc 'langtool-region-begin))
+        (finish (process-get proc 'langtool-region-finish)))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (save-excursion
+          (save-restriction
+            (when (and begin finish)
+              (narrow-to-region begin finish))
+            (cond
+             ((consp n-tuple)
+              (langtool--create-overlay version (car n-tuple))
+              (run-with-idle-timer
+               1 nil 'langtool--lazy-apply-checks
+               proc (cdr n-tuple)))
+             (t
+              (let ((source (process-get proc 'langtool-source-buffer)))
+                (langtool--check-finish source nil))))))))))
+
 (defun langtool--check-finish (source errmsg)
-  (let (marks face) 
-    (when errmsg
-      (setq face compilation-error-face))
+  (let (marks face)
     (when (buffer-live-p source)
       (with-current-buffer source
         (setq marks (langtool--overlays-region (point-min) (point-max)))
-        (setq face (or face (if marks
-                                compilation-warning-face
-                              compilation-info-face)))
+        (setq face (cond
+                    (errmsg
+                     compilation-error-face)
+                    (marks
+                     compilation-warning-face)
+                    (t
+                     compilation-info-face)))
         (setq langtool-buffer-process nil)
         (setq langtool-mode-line-message
               (list " "
@@ -934,7 +956,7 @@ Ordinary no need to change this."
                 (langtool-server--parse-initial-buffer)
               (when (version< version "4.0")
                 (langtool-server-ensure-stop proc)
-                (error "LanguageTool Server version must be after 4.0 now %s"
+                (error "LanguageTool Server version must be than 4.0 but now %s"
                        version))
               (process-put proc 'langtool-server-host host)
               (process-put proc 'langtool-server-port port)
@@ -994,7 +1016,7 @@ Ordinary no need to change this."
                                        msg1 message rule-id context
                                        offset)
                                  n-tuple))))
-    n-tuple))
+    (nreverse n-tuple)))
 
 (defun langtool-client--parse-response-body (http-headers)
   (let ((ct (cdr (assoc-string "content-type" http-headers t))))
@@ -1007,6 +1029,7 @@ Ordinary no need to change this."
 (defun langtool-client--process-sentinel (proc event)
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
+          (source (process-get proc 'langtool-source-buffer))
           errmsg n-tuple)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
@@ -1018,10 +1041,11 @@ Ordinary no need to change this."
            (t
             (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
           (kill-buffer pbuf)))
-      
-      (langtool--apply-checks proc n-tuple)
-      (let ((source (process-get proc 'langtool-source-buffer)))
-        (langtool--check-finish source errmsg)))))
+      (cond
+       (errmsg
+        (langtool--check-finish source errmsg))
+       (t
+        (langtool--lazy-apply-checks proc n-tuple))))))
 
 (defun langtool-client--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
