@@ -143,6 +143,9 @@
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * change to --json argument to parse. 
 
+
+;;TODO japanese
+
 ;;; Code:
 
 (require 'cl-lib)
@@ -334,6 +337,13 @@ Call just before POST with `application/x-www-form-urlencoded'."
 (defvar langtool-mode-line-message nil)
 (make-variable-buffer-local 'langtool-mode-line-message)
 (put 'langtool-mode-line-message 'risky-local-variable t)
+
+(defvar langtool-mode-line-process nil)
+(make-variable-buffer-local 'langtool-mode-line-process)
+(put 'langtool-mode-line-process 'risky-local-variable t)
+
+(defvar langtool-mode-line-server-process nil)
+(put 'langtool-mode-line-server-process 'risky-local-variable t)
 
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 
@@ -785,10 +795,8 @@ Ordinary no need to change this."
                     (t
                      compilation-info-face)))
         (setq langtool-buffer-process nil)
-        (setq langtool-mode-line-message
-              (list " "
-                    "Langtool"
-                    (propertize ":exit" 'face face)))
+        (setq langtool-mode-line-process
+              (propertize ":exit" 'face face))
         (cond
          (errmsg
           (message "%s" errmsg))
@@ -969,6 +977,12 @@ Ordinary no need to change this."
           (message "%s." (current-message))
           (accept-process-output proc 0.1 nil t))))))
 
+(defvar langtool-server--process-exit-hook nil)
+
+(defun langtool-server--process-sentinel (proc event)
+  (unless (process-live-p proc)
+    (run-hooks 'langtool-server--process-exit-hook)))
+
 (defun langtool-server--ensure-running ()
   (langtool-server--check-command)
   (unless (and (processp langtool-server--process)
@@ -988,6 +1002,7 @@ Ordinary no need to change this."
                     "-cp" langtool-language-tool-server-jar
                     args)))
         (langtool-server--rendezvous proc buffer)
+        (set-process-sentinel proc 'langtool-server--process-sentinel)
         (setq langtool-server--process proc))))
   langtool-server--process)
 
@@ -1119,13 +1134,20 @@ Ordinary no need to change this."
        (setq proc (langtool-command--invoke-process file begin finish lang)))
       ('http
        (langtool-server--ensure-running)
+       (setq langtool-mode-line-server-process
+             (propertize ":server" 'face compilation-info-face))
+       (add-hook 'langtool-server--process-exit-hook
+                 (lambda ()
+                   (setq langtool-mode-line-server-process nil)))
        (setq proc (langtool-client--invoke-process file begin finish lang))))
     (setq langtool-buffer-process proc)
-    ;; TODO and show HTTP Server status?
+    (setq langtool-mode-line-process
+          (propertize ":run" 'face compilation-info-face))
     (setq langtool-mode-line-message
           (list " "
-                "Langtool"
-                (propertize ":run" 'face compilation-info-face)))))
+                "LT"
+                'langtool-mode-line-server-process
+                'langtool-mode-line-process))))
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
