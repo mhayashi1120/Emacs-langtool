@@ -45,10 +45,16 @@
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ;;
-;; You can use HTTP server implementation which is now testing.
-;; This is very fast checking, but has security risk if there is multiple user on a same host. 
+;;TODO recommended both of the variables
+;; You can use HTTP server implementation which is now testing.  This
+;; is very fast checking, but has security risk if there is multiple
+;; user on a same host.  You can set both of
+;; `langtool-language-tool-jar' and `langtool-language-tool-server-jar'
+;; the later is prior than the former.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+
+;; TODO server port number.
 
 ;; These settings are optional:
 
@@ -145,6 +151,8 @@
 
 
 ;;TODO japanese
+;;TODO pcase
+;;TODO auto
 
 ;;; Code:
 
@@ -944,7 +952,8 @@ Ordinary no need to change this."
                             ".+?"
                             "server on https?://\\([^:]+\\):\\([0-9]+\\)"
                             "\.\.\."
-                            "$"))))
+                            "$"))
+                         nil t))
      (t
       (error "Unable parse initial buffer")))
     (let ((version (match-string 1))

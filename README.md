@@ -28,6 +28,13 @@ Alternatively, you can set the classpath where LanguageTool's jars reside:
       "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ```
 
+You can use HTTP server implementation which is now testing.
+This is very fast checking, but has security risk if there is multiple user on a same host. 
+
+```
+(setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+```
+
 These settings are optional:
 
 * Key binding if you desired.
