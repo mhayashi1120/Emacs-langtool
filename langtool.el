@@ -32,8 +32,8 @@
 ;; Put this file into load-path'ed directory, and byte compile it if
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
-;;     (require 'langtool)
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
+;;     (require 'langtool)
 ;;
 ;; If you use old version of LanguageTool, may be:
 ;;
@@ -41,9 +41,9 @@
 ;;
 ;; Alternatively, you can set the classpath where LanguageTool's jars reside:
 ;;
-;;     (require 'langtool)
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
+;;     (require 'langtool)
 ;;
 ;;TODO recommended both of the variables
 ;; You can use HTTP server implementation which is now testing.  This
