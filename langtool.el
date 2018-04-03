@@ -50,6 +50,8 @@
 ;; same host. You can set both of
 ;; `langtool-language-tool-jar' and `langtool-language-tool-server-jar'
 ;; the later is prior than the former.
+;; [Recommended] You should set `langtool-language-tool-jar' correctly
+;;    full of completion support like available languages.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
 
@@ -154,6 +156,7 @@
 
 
 ;;TODO check commandline output and json output difference
+;;TODO cygwin
 
 (require 'cl-lib)
 (require 'compile)
@@ -296,7 +299,7 @@ Do not change this variable if you don't understand what you are doing.
           function))
 
 (defcustom langtool-server-user-arguments nil
-  "languagetool-server.jar customize arguments.
+  "`langtool-language-tool-server-jar' customize arguments.
 You can pass `--config' option to the server that indicate java property file.
 
 You can see all valid arguments with following command (Replace path by yourself):
@@ -1012,7 +1015,8 @@ Ordinary no need to change this."
                     'start-process
                     "LangtoolHttpServer" buffer
                     langtool-java-bin
-                    "-cp" langtool-language-tool-server-jar
+                    "-cp" (langtool--process-file-name
+                           langtool-language-tool-server-jar)
                     args)))
         (langtool-server--rendezvous proc buffer)
         (set-process-sentinel proc 'langtool-server--process-sentinel)
