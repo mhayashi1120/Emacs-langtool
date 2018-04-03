@@ -45,16 +45,17 @@
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ;;     (require 'langtool)
 ;;
-;;TODO recommended both of the variables
 ;; You can use HTTP server implementation which is now testing.  This
-;; is very fast checking, but has security risk if there is multiple
-;; user on a same host.  You can set both of
+;; is very fast, but has security risk if there is multiple user on a
+;; same host. You can set both of
 ;; `langtool-language-tool-jar' and `langtool-language-tool-server-jar'
 ;; the later is prior than the former.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
 
-;; TODO server port number.
+;; You can change HTTP server port number like following.
+;;
+;;     (setq langtool-server-user-arguments '("-p" "8082"))
 
 ;; These settings are optional:
 
