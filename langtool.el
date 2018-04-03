@@ -150,11 +150,10 @@
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * change to --json argument to parse. 
 
-
-;;TODO japanese
-;;TODO auto
-
 ;;; Code:
+
+
+;;TODO check commandline output and json output difference
 
 (require 'cl-lib)
 (require 'compile)
@@ -1090,7 +1089,6 @@ Ordinary no need to change this."
     (let* ((disabled-rules (langtool--disabled-rules))
            (query `(
                     ("language" ,(or lang "auto"))
-                    ;; TODO encode
                     ("text" ,text)
                     ,@(and langtool-mother-tongue
                            `(("motherTongue" ,langtool-mother-tongue)))
@@ -1100,6 +1098,7 @@ Ordinary no need to change this."
       (when (and langtool-client-filter-query-function
                  (functionp langtool-client-filter-query-function))
         (setq query (funcall langtool-client-filter-query-function query)))
+      ;; UTF-8 encoding if value is multibyte character
       (setq query-string (url-build-query-string query))
       query-string)))
 
