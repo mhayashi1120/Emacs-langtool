@@ -151,7 +151,6 @@
 
 
 ;;TODO japanese
-;;TODO pcase
 ;;TODO auto
 
 ;;; Code:
@@ -159,6 +158,7 @@
 (require 'cl-lib)
 (require 'compile)
 (require 'json)
+(require 'pcase)
 
 (defgroup langtool nil
   "Customize langtool"
@@ -261,7 +261,9 @@ https://github.com/mhayashi1120/Emacs-langtool/issues/8"
   :type 'string)
 
 (defcustom langtool-default-language nil
-  "Language name pass to LanguageTool."
+  "Language name pass to LanguageTool command.
+HTTP client mode (`langtool-language-tool-server-jar') does not
+ read the setting."
   :group 'langtool
   :type 'string)
 
@@ -667,11 +669,11 @@ Ordinary no need to change this."
                  ",")))))
 
 (defun langtool--basic-command&args ()
-  (let (command args)
-    (cond
-     (langtool-bin
-      (setq command langtool-bin))
-     (t
+  (cond
+   (langtool-bin
+    (list langtool-bin nil))
+   (t
+    (let (command args)
       (setq command langtool-java-bin)
       ;; Construct arguments pass to java command
       (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
@@ -680,12 +682,14 @@ Ordinary no need to change this."
         (setq args (append
                     args
                     (list "-cp" langtool-java-classpath
-                          "org.languagetool.commandline.Main"))))
+                          "org.languagetool.commandline.Main")))
+        (list command args))
        (langtool-language-tool-jar
         (setq args (append
                     args
-                    (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))))
-    (list command args)))
+                    (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))
+        (list command args))
+       (t nil))))))
 
 (defun langtool--process-create-client-buffer ()
   (generate-new-buffer " *Langtool* "))
@@ -1084,7 +1088,7 @@ Ordinary no need to change this."
       (setq text (buffer-string)))
     (let* ((disabled-rules (langtool--disabled-rules))
            (query `(
-                    ("language" ,(or lang langtool-default-language))
+                    ("language" ,(or lang "auto"))
                     ;; TODO encode
                     ("text" ,text)
                     ,@(and langtool-mother-tongue
@@ -1238,17 +1242,19 @@ Ordinary no need to change this."
     (coding-system-get coding-system 'alias-coding-systems)))
 
 (defun langtool--brief-execute (langtool-args parser)
-  (cl-destructuring-bind (command args)
-      (langtool--basic-command&args)
-    ;; Construct arguments pass to jar file.
-    (setq args (append args langtool-args))
-    (with-temp-buffer
-      (when (and command args
-                 (executable-find command)
-                 (= (langtool--with-java-environ
-                     (apply 'call-process command nil t nil args) 0)))
-        (goto-char (point-min))
-        (funcall parser)))))
+  (pcase (langtool--basic-command&args)
+    (`(,command ,args)
+     ;; Construct arguments pass to jar file.
+     (setq args (append args langtool-args))
+     (with-temp-buffer
+       (when (and command args
+                  (executable-find command)
+                  (= (langtool--with-java-environ
+                      (apply 'call-process command nil t nil args) 0)))
+         (goto-char (point-min))
+         (funcall parser))))
+    (_
+     nil)))
 
 (defun langtool--available-languages ()
   (langtool--brief-execute
@@ -1268,6 +1274,7 @@ Ordinary no need to change this."
 (defun langtool--jar-version ()
   (let ((string (langtool--jar-version-string)))
     (cond
+     ((null string) nil)
      ((string-match "version \\([0-9.]+\\)" string)
       (match-string 1 string))
      (t
@@ -1594,7 +1601,7 @@ Restrict to selection when region is activated.
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
-  "Switch `langtool-read-lang-name' to LANG"
+  "Switch `langtool-default-language' to LANG"
   (interactive (list (langtool-read-lang-name)))
   (setq langtool-default-language lang)
   (message "Now default language is `%s'" lang))
