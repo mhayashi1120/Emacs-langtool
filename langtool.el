@@ -26,7 +26,7 @@
 
 ;; ## Install:
 
-;; Install LanguageTool (and java)
+;; Install LanguageTool version 3.0 or later (and java)
 ;; http://www.languagetool.org/
 
 ;; Put this file into load-path'ed directory, and byte compile it if
@@ -34,10 +34,6 @@
 ;;
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 ;;     (require 'langtool)
-;;
-;; If you use old version of LanguageTool, may be:
-;;
-;;     (setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
 ;;
 ;; Alternatively, you can set the classpath where LanguageTool's jars reside:
 ;;
@@ -264,11 +260,11 @@ https://github.com/mhayashi1120/Emacs-langtool/issues/8"
   :type 'string)
 
 (defcustom langtool-default-language nil
-  "Language name pass to LanguageTool command.
-HTTP client mode (`langtool-language-tool-server-jar') does not
- read the setting."
+  "Language name pass to LanguageTool command."
   :group 'langtool
-  :type 'string)
+  :type '(choice
+          string
+          (const auto)))
 
 (defcustom langtool-mother-tongue nil
   "Your mothertongue Language name pass to LanguageTool."
@@ -472,15 +468,8 @@ Call just before POST with `application/x-www-form-urlencoded'."
      (t
       (goto-char (point-min))
       (forward-line (1- line))
-      (cond
-       ((version< version "2.0")
-        ;;  1. sketchy move to column that is indicated by LanguageTool.
-        ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-        (forward-char (1- col))
-        (langtool--fuzzy-search context len))
-       (t
-        (forward-char col)
-        (cons (point) (+ (point) len))))))))
+      (forward-char col)
+      (cons (point) (+ (point) len))))))
 
 (defun langtool--create-overlay (version tuple)
   (cl-destructuring-bind (start . end)
@@ -849,12 +838,17 @@ Ordinary no need to change this."
     (cl-destructuring-bind (command args)
         (langtool--basic-command&args)
       ;; Construct arguments pass to jar file.
+      ;; http://wiki.languagetool.org/command-line-options
       (setq args (append
                   args
                   (list "-c" (langtool--java-coding-system
                               buffer-file-coding-system)
-                        "-l" (or lang langtool-default-language)
                         "-d" (langtool--disabled-rules))))
+      (cond
+       ((stringp (or lang langtool-default-language))
+        (setq args (append args (list "-l" (or lang langtool-default-language)))))
+       (t
+        (setq args (append args (list "--autoDetect")))))
       (when langtool-mother-tongue
         (setq args (append args (list "-m" langtool-mother-tongue))))
       (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
@@ -1091,8 +1085,13 @@ Ordinary no need to change this."
       (insert-file-contents file)
       (setq text (buffer-string)))
     (let* ((disabled-rules (langtool--disabled-rules))
+           (language (cond
+                      ((stringp (or lang langtool-default-language))
+                       (or lang langtool-default-language))
+                      (t
+                       "auto")))
            (query `(
-                    ("language" ,(or lang "auto"))
+                    ("language" ,language)
                     ("text" ,text)
                     ,@(and langtool-mother-tongue
                            `(("motherTongue" ,langtool-mother-tongue)))
@@ -1512,10 +1511,14 @@ See the Commentary section for `popup' implementation."
 ;;;
 
 (defun langtool-read-lang-name ()
-  (let ((completion-ignore-case t))
-    (completing-read "Lang: "
-                     (or (mapcar 'list (langtool--available-languages))
-                         locale-language-names))))
+  (let ((completion-ignore-case t)
+        (set
+         (append
+          '(("auto" . auto))
+          (or (mapcar 'list (langtool--available-languages))
+              (mapcar (lambda (x) (list (car x))) locale-language-names)))))
+    (let ((key (completing-read "Lang: " set)))
+      (or (cdr (assoc key set)) key))))
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
@@ -1644,9 +1647,7 @@ Restrict to selection when region is activated.
 ;; initialize custom variables guessed from environment.
 (let ((mt (langtool--guess-language)))
   (unless langtool-mother-tongue
-    (setq langtool-mother-tongue mt))
-  (unless langtool-default-language
-    (setq langtool-default-language (or mt "en-GB"))))
+    (setq langtool-mother-tongue mt)))
 
 (provide 'langtool)
 
