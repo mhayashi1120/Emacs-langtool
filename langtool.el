@@ -65,8 +65,8 @@
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 
-;; * Default language is detected by LANG/LC_ALL environment variable.
-;;   Please set `langtool-default-language` if you need to change default value.
+;; * Default language is detected by LanguageTool automatically.
+;;   Please set `langtool-default-language` if you need to specify value.
 ;;
 ;;     (setq langtool-default-language "en-US")
 ;;
@@ -260,11 +260,14 @@ https://github.com/mhayashi1120/Emacs-langtool/issues/8"
   :type 'string)
 
 (defcustom langtool-default-language nil
-  "Language name pass to LanguageTool command."
+  "Language name pass to LanguageTool command.
+This is string which indicate locale or `auto' or `nil'.
+Currently `auto' and `nil' is a same meaning."
   :group 'langtool
   :type '(choice
           string
-          (const auto)))
+          (const auto)
+          (const nil)))
 
 (defcustom langtool-mother-tongue nil
   "Your mothertongue Language name pass to LanguageTool."
