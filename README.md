@@ -3,29 +3,41 @@ langtool.el
 
 ## Install:
 
-Install LanguageTool (and java)
+Install LanguageTool version 3.0 or later (and java)
 http://www.languagetool.org/
 
 Put this file into load-path'ed directory, and byte compile it if
 desired. And put the following expression into your ~/.emacs.
 
 ```
-(require 'langtool)
 (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
-```
-
-If you use old version of LanguageTool, may be:
-
-```
-(setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
+(require 'langtool)
 ```
 
 Alternatively, you can set the classpath where LanguageTool's jars reside:
 
 ```
-(require 'langtool)
 (setq langtool-java-classpath
       "/usr/share/languagetool:/usr/share/java/languagetool/*")
+(require 'langtool)
+```
+
+You can use HTTP server implementation which is now testing.  This
+is very fast, but has security risk if there is multiple user on a
+same host. You can set both of
+`langtool-language-tool-jar` and `langtool-language-tool-server-jar`
+the later is prior than the former.
+[Recommended] You should set `langtool-language-tool-jar` correctly
+   full of completion support like available languages.
+
+```
+(setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+```
+
+You can change HTTP server port number like following.
+
+```
+(setq langtool-server-user-arguments '("-p" "8082"))
 ```
 
 These settings are optional:
@@ -40,8 +52,8 @@ These settings are optional:
 (global-set-key "\C-x4c" 'langtool-correct-buffer)
 ```
 
-* Default language is detected by LANG/LC_ALL environment variable.
-  Please set `langtool-default-language` if you need to change default value.
+* Default language is detected by LanguageTool automatically.
+  Please set `langtool-default-language` if you need to specify value.
 
 ```
 (setq langtool-default-language "en-US")

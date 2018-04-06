@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 1.7.0
+;; Version: 2.0.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -26,24 +26,34 @@
 
 ;; ## Install:
 
-;; Install LanguageTool (and java)
+;; Install LanguageTool version 3.0 or later (and java)
 ;; http://www.languagetool.org/
 
 ;; Put this file into load-path'ed directory, and byte compile it if
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
-;;     (require 'langtool)
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
-;;
-;; If you use old version of LanguageTool, may be:
-;;
-;;     (setq langtool-language-tool-jar "/path/to/LanguageTool.jar")
+;;     (require 'langtool)
 ;;
 ;; Alternatively, you can set the classpath where LanguageTool's jars reside:
 ;;
-;;     (require 'langtool)
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
+;;     (require 'langtool)
+;;
+;; You can use HTTP server implementation which is now testing.  This
+;; is very fast, but has security risk if there is multiple user on a
+;; same host. You can set both of
+;; `langtool-language-tool-jar' and `langtool-language-tool-server-jar'
+;; the later is prior than the former.
+;; [Recommended] You should set `langtool-language-tool-jar' correctly
+;;    full of completion support like available languages.
+;;
+;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
+
+;; You can change HTTP server port number like following.
+;;
+;;     (setq langtool-server-user-arguments '("-p" "8082"))
 
 ;; These settings are optional:
 
@@ -55,8 +65,8 @@
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
 ;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
 
-;; * Default language is detected by LANG/LC_ALL environment variable.
-;;   Please set `langtool-default-language` if you need to change default value.
+;; * Default language is detected by LanguageTool automatically.
+;;   Please set `langtool-default-language` if you need to specify value.
 ;;
 ;;     (setq langtool-default-language "en-US")
 ;;
@@ -136,13 +146,15 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
-;; * change to --json argument to parse. Do not forget to parse partial json
-;;  in a process filter. Parsing whole json slow down Emacs
+;; * change to --json argument to parse. 
 
 ;;; Code:
 
+
 (require 'cl-lib)
 (require 'compile)
+(require 'json)
+(require 'pcase)
 
 (defgroup langtool nil
   "Customize langtool"
@@ -229,6 +241,12 @@ No need to set this variable when `langtool-java-classpath' is set."
   :group 'langtool
   :type 'file)
 
+(defcustom langtool-language-tool-server-jar nil
+  "LanguageTool server jar file. **This is now TESTING**.
+Very fast, but do not use it if there is unreliable user on a same host."
+  :group 'langtool
+  :type 'file)
+
 (defcustom langtool-java-classpath nil
   "Custom classpath to use on special environment. (e.g. Arch Linux)
 Do not set both of this variable and `langtool-language-tool-jar'.
@@ -239,9 +257,14 @@ https://github.com/mhayashi1120/Emacs-langtool/issues/8"
   :type 'string)
 
 (defcustom langtool-default-language nil
-  "Language name pass to LanguageTool."
+  "Language name pass to LanguageTool command.
+This is string which indicate locale or `auto' or `nil'.
+Currently `auto' and `nil' is a same meaning."
   :group 'langtool
-  :type 'string)
+  :type '(choice
+          string
+          (const auto)
+          (const nil)))
 
 (defcustom langtool-mother-tongue nil
   "Your mothertongue Language name pass to LanguageTool."
@@ -270,6 +293,25 @@ Do not change this variable if you don't understand what you are doing.
   :type '(choice
           (repeat string)
           function))
+
+(defcustom langtool-server-user-arguments nil
+  "`langtool-language-tool-server-jar' customize arguments.
+You can pass `--config' option to the server that indicate java property file.
+
+You can see all valid arguments with following command (Replace path by yourself):
+java -jar /path/to/languagetool-server.jar --help
+"
+  :group 'langtool
+  :type '(choice
+          (repeat string)
+          function))
+
+(defcustom langtool-client-filter-query-function nil
+  "Filter function that accept one query form argument.
+This query form is an alist will be encoded by `url-build-query-string'.
+Call just before POST with `application/x-www-form-urlencoded'."
+  :group 'langtool
+  :type 'function)
 
 (defcustom langtool-error-exists-hook
   '(langtool-autoshow-ensure-timer)
@@ -305,6 +347,13 @@ Do not change this variable if you don't understand what you are doing.
 (make-variable-buffer-local 'langtool-mode-line-message)
 (put 'langtool-mode-line-message 'risky-local-variable t)
 
+(defvar langtool-mode-line-process nil)
+(make-variable-buffer-local 'langtool-mode-line-process)
+(put 'langtool-mode-line-process 'risky-local-variable t)
+
+(defvar langtool-mode-line-server-process nil)
+(put 'langtool-mode-line-server-process 'risky-local-variable t)
+
 (defvar langtool-error-buffer-name " *LanguageTool Errors* ")
 
 (defvar langtool--debug nil)
@@ -325,10 +374,6 @@ Do not change this variable if you don't understand what you are doing.
 ;; basic functions
 ;;
 
-(defmacro langtool--with-java-environ (&rest form)
-  `(let ((coding-system-for-read langtool-process-coding-system))
-     (progn ,@form)))
-
 (defun langtool-region-active-p ()
   (cond
    ((fboundp 'region-active-p)
@@ -338,7 +383,7 @@ Do not change this variable if you don't understand what you are doing.
 
 (defun langtool--debug (key fmt &rest args)
   (when langtool--debug
-    (let ((buf (get-buffer-create "*LanguageTool Debug*")))
+    (let ((buf (get-buffer-create "*Langtool Debug*")))
       (with-current-buffer buf
         (goto-char (point-max))
         (insert "---------- [" key "] ----------\n")
@@ -348,6 +393,41 @@ Do not change this variable if you don't understand what you are doing.
   (if (string-match "\\(?:\\(\r\n\\)+\\|\\(\n\\)+\\)\\'" s)
       (substring s 0 (match-beginning 0))
     s))
+
+(defun langtool--make-temp-file ()
+  (make-temp-file "langtool-"))
+
+;;
+;; HTTP basic
+;;
+
+(defun langtool-http--parse-response-header ()
+  ;; Not a exact parser. Just a necessary. ;-)
+  (save-excursion
+    (goto-char (point-min))
+    (unless (re-search-forward "^\r\n" nil t)
+      (error "Parse error. Not found http header separator."))
+    (let (status headers body-start)
+      (setq body-start (point))
+      (forward-line -1)
+      (save-restriction
+        (narrow-to-region (point-min) (point))
+        (goto-char (point-min))
+        (unless (looking-at "^HTTP/[0-9.]+[\s\t]+\\([0-9]+\\)")
+          (error "Parse error. Not found HTTP status code"))
+        (setq status (string-to-number (match-string-no-properties 1)))
+        (forward-line)
+        (while (not (eobp))
+          (let (key value)
+            (unless (looking-at "^\\([^:]+\\):")
+              (error "Invalid header of HTTP response"))
+            (setq key (match-string-no-properties 1))
+            (goto-char (match-end 0))
+            (while (looking-at "[\s\t]+\\(.*\\)\r")
+              (setq value (concat value (match-string-no-properties 1)))
+              (forward-line 1))
+            (setq headers (cons (cons key value) headers))))
+        (list status headers body-start)))))
 
 ;;
 ;; handle error overlay
@@ -373,29 +453,34 @@ Do not change this variable if you don't understand what you are doing.
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--create-overlay (tuple)
+(defun langtool--compute-start&end (version tuple)
   (let ((line (nth 0 tuple))
         (col (nth 1 tuple))
         (len (nth 2 tuple))
-        (sugs (nth 3 tuple))
-        (msg (nth 4 tuple))
-        (message (nth 5 tuple))
-        (rule-id (nth 6 tuple))
-        (context (nth 7 tuple)))
-    (goto-char (point-min))
-    (forward-line (1- line))
-    ;;  1. sketchy move to column that is indicated by LanguageTool.
-    ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-    (forward-char (1- col))
-    (cl-destructuring-bind (start . end)
-        (langtool--fuzzy-search context len)
-      (let ((ov (make-overlay start end)))
-        (overlay-put ov 'langtool-simple-message msg)
-        (overlay-put ov 'langtool-message message)
-        (overlay-put ov 'langtool-suggestions sugs)
-        (overlay-put ov 'langtool-rule-id rule-id)
-        (overlay-put ov 'priority 1)
-        (overlay-put ov 'face 'langtool-errline)))))
+        (context (nth 7 tuple))
+        ;; Only Server <-> Client have the data
+        (offset (nth 8 tuple)))
+    (cond
+     (offset
+      (let* ((start (+ (point-min) offset))
+             (end (+ start len)))
+        (cons start end)))
+     (t
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (forward-char col)
+      (cons (point) (+ (point) len))))))
+
+(defun langtool--create-overlay (version tuple)
+  (cl-destructuring-bind (start . end)
+      (langtool--compute-start&end version tuple)
+    (let ((ov (make-overlay start end)))
+      (overlay-put ov 'langtool-simple-message (nth 4 tuple))
+      (overlay-put ov 'langtool-message (nth 5 tuple))
+      (overlay-put ov 'langtool-suggestions (nth 3 tuple))
+      (overlay-put ov 'langtool-rule-id (nth 6 tuple))
+      (overlay-put ov 'priority 1)
+      (overlay-put ov 'face 'langtool-errline))))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
@@ -509,155 +594,17 @@ Do not change this variable if you don't understand what you are doing.
      (overlay-get ov 'langtool-message))
    (langtool--current-error-overlays)))
 
+;;;
+;;; LanguageTool Process
+;;;
+
 ;;
-;; LanguageTool Process
+;; Process basic
 ;;
 
-(defun langtool--disabled-rules ()
-  (let ((custom langtool-disabled-rules)
-        (locals langtool-local-disabled-rules))
-    (cond
-     ((stringp custom)
-      (mapconcat 'identity
-                 (cons custom locals)
-                 ","))
-     (t
-      (mapconcat 'identity
-                 (append custom locals)
-                 ",")))))
-
-(defun langtool--check-command ()
-  (cond
-   (langtool-bin
-    (unless (executable-find langtool-bin)
-      (error "LanguageTool command not executable")))
-   ((or (null langtool-java-bin)
-        (not (executable-find langtool-java-bin)))
-    (error "java command is not found")))
-  (cond
-   (langtool-java-classpath)
-   (langtool-language-tool-jar
-    (unless (file-readable-p langtool-language-tool-jar)
-      (error "langtool jar file is not readable"))))
-  (when langtool-buffer-process
-    (error "Another process is running")))
-
-(defun langtool--basic-command&args ()
-  (let (command args)
-    (cond
-     (langtool-bin
-      (setq command langtool-bin))
-     (t
-      (setq command langtool-java-bin)
-      ;; Construct arguments pass to java command
-      (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
-      (cond
-       (langtool-java-classpath
-        (setq args (append
-                    args
-                    (list "-cp" langtool-java-classpath
-                          "org.languagetool.commandline.Main"))))
-       (langtool-language-tool-jar
-        (setq args (append
-                    args
-                    (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))))))
-    (list command args)))
-
-(defun langtool--process-create-buffer ()
-  (generate-new-buffer " *LanguageTool* "))
-
-(defun langtool--sentence-to-fuzzy (sentence)
-  (mapconcat 'regexp-quote
-             ;; this sentence is reported by LanguageTool
-             (split-string sentence " +")
-             ;; LanguageTool interpreted newline as space.
-             "[[:space:]\n]+?"))
-
-(defun langtool--pointed-length (message)
-  (or
-   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
-        (length (match-string 2 message)))
-   ;; never through here, but if return nil from this function make stop everything.
-   1))
-
-(defun langtool--process-filter (proc event)
-  (langtool--debug "Filter" "%s" event)
-  (with-current-buffer (process-buffer proc)
-    (goto-char (point-max))
-    (insert event)
-    (let ((min (or (process-get proc 'langtool-process-done)
-                   (point-min)))
-          (buffer (process-get proc 'langtool-source-buffer))
-          (begin (process-get proc 'langtool-region-begin))
-          (finish (process-get proc 'langtool-region-finish))
-          n-tuple)
-      (goto-char min)
-      (while (re-search-forward langtool-output-regexp nil t)
-        (let* ((line (string-to-number (match-string 1)))
-               (column (1- (string-to-number (match-string 2))))
-               (rule-id (match-string 3))
-               (suggest (match-string 5))
-               (msg1 (match-string 4))
-               ;; rest of line. Point the raw message.
-               (msg2 (match-string 6))
-               (message
-                (concat "Rule ID: " rule-id "\n"
-                        msg1 "\n\n"
-                        msg2))
-               (suggestions (and suggest (split-string suggest "; ")))
-               (context (langtool--pointed-context-regexp msg2))
-               (len (langtool--pointed-length msg2)))
-          (setq n-tuple (cons
-                         (list line column len suggestions
-                               msg1 message rule-id context)
-                         n-tuple))))
-      (process-put proc 'langtool-process-done (point))
-      (when (buffer-live-p buffer)
-        (with-current-buffer buffer
-          (save-excursion
-            (save-restriction
-              (when (and begin finish)
-                (narrow-to-region begin finish))
-              (mapc
-               (lambda (tuple)
-                 (langtool--create-overlay tuple))
-               (nreverse n-tuple)))))))))
-
-;;FIXME sometimes LanguageTool reports wrong column.
-(defun langtool--pointed-context-regexp (message)
-  (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
-    (let* ((msg1 (match-string 1 message))
-           ;; calculate marker "^" start at column
-           (pre (length (match-string 2 message)))
-           ;; "^" marker length
-           (len (length (match-string 3 message)))
-           (end (+ pre len))
-           (sentence (substring msg1 pre end))
-           (regexp (cond
-                    ((string-match "^[[:space:]]+$" sentence)
-                     ;; invalid sentence only have whitespace,
-                     ;; search with around sentence.
-                     (concat
-                      "\\("
-                      (let* ((count (length sentence))
-                             (spaces (format "[[:space:]\n]\\{%d\\}" count)))
-                        spaces)
-                      "\\)"
-                      ;; considered truncated spaces that is caused by
-                      ;; `langtool--sentence-to-fuzzy'
-                      "[[:space:]]*?"
-                      ;; to match the correct block
-                      ;; suffix of invalid spaces.
-                      (langtool--sentence-to-fuzzy
-                       (let ((from (min end (length msg1))))
-                         ;;TODO magic number.
-                         (substring msg1 from (min (length msg1) (+ from 20)))))))
-                    (t
-                     (concat "\\("
-                             (langtool--sentence-to-fuzzy sentence)
-                             "\\)")))))
-      regexp)))
-
+(defmacro langtool--with-java-environ (&rest form)
+  `(let ((coding-system-for-read langtool-process-coding-system))
+     (progn ,@form)))
 
 (defun langtool--process-file-name (path)
   "Correct the file name depending on the underlying platform.
@@ -696,91 +643,551 @@ Ordinary no need to change this."
       (setq args value)))
     (copy-sequence args)))
 
-(defun langtool--invoke-process (file begin finish &optional lang)
+;;
+;; Command interaction
+;;
+
+(defun langtool--disabled-rules ()
+  (let ((custom langtool-disabled-rules)
+        (locals langtool-local-disabled-rules))
+    (cond
+     ((stringp custom)
+      (mapconcat 'identity
+                 (cons custom locals)
+                 ","))
+     (t
+      (mapconcat 'identity
+                 (append custom locals)
+                 ",")))))
+
+(defun langtool--basic-command&args ()
+  (cond
+   (langtool-bin
+    (list langtool-bin nil))
+   (t
+    (let (command args)
+      (setq command langtool-java-bin)
+      ;; Construct arguments pass to java command
+      (setq args (langtool--custom-arguments 'langtool-java-user-arguments))
+      (cond
+       (langtool-java-classpath
+        (setq args (append
+                    args
+                    (list "-cp" langtool-java-classpath
+                          "org.languagetool.commandline.Main")))
+        (list command args))
+       (langtool-language-tool-jar
+        (setq args (append
+                    args
+                    (list "-jar" (langtool--process-file-name langtool-language-tool-jar))))
+        (list command args))
+       (t nil))))))
+
+(defun langtool--process-create-client-buffer ()
+  (generate-new-buffer " *Langtool* "))
+
+(defun langtool--sentence-to-fuzzy (sentence)
+  (mapconcat 'regexp-quote
+             ;; this sentence is reported by LanguageTool
+             (split-string sentence " +")
+             ;; LanguageTool interpreted newline as space.
+             "[[:space:]\n]+?"))
+
+(defun langtool--pointed-length (message)
+  (or
+   (and (string-match "\n\\( *\\)\\(\\^+\\)" message)
+        (length (match-string 2 message)))
+   ;; never through here, but if return nil from this function make stop everything.
+   1))
+
+;;FIXME sometimes LanguageTool reports wrong column.
+(defun langtool--pointed-context-regexp (message)
+  (when (string-match "\\(.*\\)\n\\( *\\)\\(\\^+\\)" message)
+    (let* ((msg1 (match-string 1 message))
+           ;; calculate marker "^" start at column
+           (pre (length (match-string 2 message)))
+           ;; "^" marker length
+           (len (length (match-string 3 message)))
+           (end (+ pre len))
+           (sentence (substring msg1 pre end))
+           (regexp (cond
+                    ((string-match "^[[:space:]]+$" sentence)
+                     ;; invalid sentence only have whitespace,
+                     ;; search with around sentence.
+                     (concat
+                      "\\("
+                      (let* ((count (length sentence))
+                             (spaces (format "[[:space:]\n]\\{%d\\}" count)))
+                        spaces)
+                      "\\)"
+                      ;; considered truncated spaces that is caused by
+                      ;; `langtool--sentence-to-fuzzy'
+                      "[[:space:]]*?"
+                      ;; to match the correct block
+                      ;; suffix of invalid spaces.
+                      (langtool--sentence-to-fuzzy
+                       (let ((from (min end (length msg1))))
+                         ;;TODO magic number.
+                         (substring msg1 from (min (length msg1) (+ from 20)))))))
+                    (t
+                     (concat "\\("
+                             (langtool--sentence-to-fuzzy sentence)
+                             "\\)")))))
+      regexp)))
+
+;;
+;; Commandline / HTTP integration
+;;
+
+(defun langtool--checker-mode ()
+  (cond
+   (langtool-language-tool-server-jar
+    'http)
+   ((or langtool-language-tool-jar
+        langtool-java-classpath)
+    'commandline)
+   (t
+    (error "There is no valid setting."))))
+
+(defun langtool--apply-checks (proc n-tuple)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        (version (process-get proc 'langtool-jar-version))
+        (begin (process-get proc 'langtool-region-begin))
+        (finish (process-get proc 'langtool-region-finish)))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (save-excursion
+          (save-restriction
+            (when (and begin finish)
+              (narrow-to-region begin finish))
+            (mapc
+             (lambda (tuple)
+               (langtool--create-overlay version tuple))
+             (nreverse n-tuple))))))))
+
+(defun langtool--lazy-apply-checks (proc n-tuple)
+  (let ((source (process-get proc 'langtool-source-buffer))
+        (version (process-get proc 'langtool-jar-version))
+        (begin (process-get proc 'langtool-region-begin))
+        (finish (process-get proc 'langtool-region-finish)))
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (save-excursion
+          (save-restriction
+            (when (and begin finish)
+              (narrow-to-region begin finish))
+            (cond
+             ((consp n-tuple)
+              (langtool--create-overlay version (car n-tuple))
+              (run-with-idle-timer
+               1 nil 'langtool--lazy-apply-checks
+               proc (cdr n-tuple)))
+             (t
+              (let ((source (process-get proc 'langtool-source-buffer)))
+                (langtool--check-finish source nil))))))))))
+
+(defun langtool--check-finish (source errmsg)
+  (let (marks face)
+    (when (buffer-live-p source)
+      (with-current-buffer source
+        (setq marks (langtool--overlays-region (point-min) (point-max)))
+        (setq face (cond
+                    (errmsg
+                     compilation-error-face)
+                    (marks
+                     compilation-warning-face)
+                    (t
+                     compilation-info-face)))
+        (setq langtool-buffer-process nil)
+        (setq langtool-mode-line-process
+              (propertize ":exit" 'face face))
+        (cond
+         (errmsg
+          (message "%s" errmsg))
+         (marks
+          (run-hooks 'langtool-error-exists-hook)
+          (message "%s"
+                   (substitute-command-keys
+                    "Type \\[langtool-correct-buffer] to correct buffer.")))
+         (t
+          (run-hooks 'langtool-noerror-hook)
+          (message "LanguageTool successfully finished with no error.")))))))
+
+;;
+;; LanguageTool Commandline
+;;
+
+(defun langtool-command--check-command ()
+  (cond
+   (langtool-bin
+    (unless (executable-find langtool-bin)
+      (error "LanguageTool command not executable")))
+   ((or (null langtool-java-bin)
+        (not (executable-find langtool-java-bin)))
+    (error "java command is not found")))
+  (cond
+   (langtool-java-classpath)
+   (langtool-language-tool-jar
+    (unless (file-readable-p langtool-language-tool-jar)
+      (error "langtool jar file is not readable"))))
+  (when langtool-buffer-process
+    (error "Another process is running")))
+
+(defun langtool-command--invoke-process (file begin finish &optional lang)
+  (let ((version (langtool--jar-version)))
+    (cl-destructuring-bind (command args)
+        (langtool--basic-command&args)
+      ;; Construct arguments pass to jar file.
+      ;; http://wiki.languagetool.org/command-line-options
+      (setq args (append
+                  args
+                  (list "-c" (langtool--java-coding-system
+                              buffer-file-coding-system)
+                        "-d" (langtool--disabled-rules))))
+      (cond
+       ((stringp (or lang langtool-default-language))
+        (setq args (append args (list "-l" (or lang langtool-default-language)))))
+       (t
+        (setq args (append args (list "--autoDetect")))))
+      (when langtool-mother-tongue
+        (setq args (append args (list "-m" langtool-mother-tongue))))
+      (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
+      (setq args (append args (list (langtool--process-file-name file))))
+      (langtool--debug "Command" "%s: %s" command args)
+      (let* ((buffer (langtool--process-create-client-buffer))
+             (proc (langtool--with-java-environ
+                    (apply 'start-process "LanguageTool" buffer command args))))
+        (set-process-filter proc 'langtool-command--process-filter)
+        (set-process-sentinel proc 'langtool-command--process-sentinel)
+        (process-put proc 'langtool-source-buffer (current-buffer))
+        (process-put proc 'langtool-region-begin begin)
+        (process-put proc 'langtool-region-finish finish)
+        (process-put proc 'langtool-jar-version version)
+        proc))))
+
+(defun langtool-command--process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
+  (with-current-buffer (process-buffer proc)
+    (goto-char (point-max))
+    (insert event)
+    (let ((min (or (process-get proc 'langtool-process-done)
+                   (point-min)))
+          n-tuple)
+      (goto-char min)
+      (while (re-search-forward langtool-output-regexp nil t)
+        (let* ((line (string-to-number (match-string 1)))
+               (column (1- (string-to-number (match-string 2))))
+               (rule-id (match-string 3))
+               (suggest (match-string 5))
+               (msg1 (match-string 4))
+               ;; rest of line. Point the raw message.
+               (msg2 (match-string 6))
+               (message
+                (concat "Rule ID: " rule-id "\n"
+                        msg1 "\n\n"
+                        msg2))
+               (suggestions (and suggest (split-string suggest "; ")))
+               (context (langtool--pointed-context-regexp msg2))
+               (len (langtool--pointed-length msg2)))
+          (setq n-tuple (cons
+                         (list line column len suggestions
+                               msg1 message rule-id context)
+                         n-tuple))))
+      (process-put proc 'langtool-process-done (point))
+      (langtool--apply-checks proc n-tuple))))
+
+(defun langtool-command--process-sentinel (proc event)
+  (unless (process-live-p proc)
+    (let ((code (process-exit-status proc))
+          (pbuf (process-buffer proc))
+          (source (process-get proc 'langtool-source-buffer))
+          dead marks errmsg face)
+      (cond
+       ((buffer-live-p pbuf)
+        (when (/= code 0)
+          ;; Get first line of output.
+          (with-current-buffer pbuf
+            (goto-char (point-min))
+            (setq errmsg
+                  (format "LanguageTool exited abnormally with code %d (%s)"
+                          code (buffer-substring (point) (point-at-eol))))))
+        (kill-buffer pbuf))
+       (t
+        (setq errmsg "Buffer was dead")))
+      (langtool--check-finish source errmsg))))
+
+;;
+;; LanguageTool HTTP Server <-> Client
+;;
+
+(defvar langtool-server--process nil)
+
+(defun langtool-server--check-command ()
+  (cond
+   ((or (null langtool-java-bin)
+        (not (executable-find langtool-java-bin)))
+    (error "java command is not found")))
+  (unless langtool-language-tool-server-jar
+    (error "Please set `langtool-language-tool-server-jar'"))
+  (unless (file-readable-p langtool-language-tool-server-jar)
+    (error "languagetool-server jar file is not readable")))
+
+(defun langtool-server-ensure-stop (&optional proc)
+  (setq proc (or proc langtool-server--process))
+  (when (processp proc)
+    (let ((buffer (process-buffer proc)))
+      (delete-process proc)
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))))
+  (setq langtool-server--process nil))
+
+(defun langtool-server--parse-initial-buffer ()
+  (save-excursion
+    (goto-char (point-min))
+    (cond
+     ((re-search-forward (eval-when-compile
+                           (concat
+                            "^"
+                            "Starting LanguageTool "
+                            "\\([0-9.]+\\)\\(?:-SNAPSHOT\\)? "
+                            ".+?"
+                            "server on https?://\\([^:]+\\):\\([0-9]+\\)"
+                            "\.\.\."
+                            "$"))
+                         nil t))
+     (t
+      (error "Unable parse initial buffer")))
+    (let ((version (match-string 1))
+          (host (match-string 2))
+          (port (string-to-number (match-string 3))))
+      (list version host port))))
+
+(defun langtool-server--rendezvous (proc buffer)
+  (message "Waiting for server")
+  (catch 'rendezvous
+    (with-current-buffer buffer
+      (save-excursion
+        (while t
+          (goto-char (point-min))
+          (when (re-search-forward "^Server started" nil t)
+            (cl-destructuring-bind (version host port)
+                (langtool-server--parse-initial-buffer)
+              (when (version< version "4.0")
+                (langtool-server-ensure-stop proc)
+                (error "LanguageTool Server version must be than 4.0 but now %s"
+                       version))
+              (process-put proc 'langtool-server-host host)
+              (process-put proc 'langtool-server-port port)
+              (process-put proc 'langtool-jar-version version)
+              (message "%s done." (current-message))
+              (throw 'rendezvous t)))
+          (unless (eq (process-status proc) 'run)
+            (langtool-server-ensure-stop proc)
+            (error "Failed to start LanguageTool Server."))
+          (message "%s." (current-message))
+          (accept-process-output proc 0.1 nil t))))))
+
+(defvar langtool-server--process-exit-hook nil)
+
+(defun langtool-server--process-sentinel (proc event)
+  (unless (process-live-p proc)
+    (run-hooks 'langtool-server--process-exit-hook)))
+
+(defun langtool-server--ensure-running ()
+  (langtool-server--check-command)
+  (unless (and (processp langtool-server--process)
+               (eq (process-status langtool-server--process) 'run))
+    (setq langtool-server--process nil)
+    (let* ((args '()))
+      ;; jar Default setting is "HTTPSServer" .
+      ;; This application no need to use SSL since local app.
+      ;; http://wiki.languagetool.org/http-server
+      (setq args (append args (list "org.languagetool.server.HTTPServer")))
+      (setq args (append args langtool-server-user-arguments))
+      (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
+             (proc (apply
+                    'start-process
+                    "LangtoolHttpServer" buffer
+                    langtool-java-bin
+                    "-cp" (langtool--process-file-name
+                           langtool-language-tool-server-jar)
+                    args)))
+        (langtool-server--rendezvous proc buffer)
+        (set-process-sentinel proc 'langtool-server--process-sentinel)
+        (setq langtool-server--process proc))))
+  langtool-server--process)
+
+(defun langtool-client--parse-response-body/json ()
+  (let* ((json (json-read))
+         (matches (cdr (assoc 'matches json)))
+         n-tuple)
+    (cl-loop for match across matches
+             do (let* ((offset (cdr (assoc 'offset match)))
+                       (len (cdr (assoc 'length match)))
+                       (rule (cdr (assoc 'rule match)))
+                       (rule-id (cdr (assoc 'id rule)))
+                       (replacements (cdr (assoc 'replacements match)))
+                       (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
+                       (msg1 (cdr (assoc 'message match)))
+                       ;; rest of line. Point the raw message.
+                       (msg2 (cdr (assoc 'shortMessage match)))
+                       (message
+                        (concat "Rule ID: " rule-id "\n"
+                                msg1 "\n\n"
+                                msg2))
+                       (context nil)
+                       line column)
+                  (setq n-tuple (cons
+                                 (list line column len suggestions
+                                       msg1 message rule-id context
+                                       offset)
+                                 n-tuple))))
+    (nreverse n-tuple)))
+
+(defun langtool-client--parse-response-body (http-headers)
+  (let ((ct (cdr (assoc-string "content-type" http-headers t))))
+    (cond
+     ((string= ct "application/json")
+      (langtool-client--parse-response-body/json))
+     (t
+      (error "Not a supported Content-Type %s" ct)))))
+
+(defun langtool-client--process-sentinel (proc event)
+  (unless (process-live-p proc)
+    (let ((pbuf (process-buffer proc))
+          (source (process-get proc 'langtool-source-buffer))
+          errmsg n-tuple)
+      (with-current-buffer pbuf
+        (cl-destructuring-bind (status headers body-start)
+            (langtool-http--parse-response-header)
+          (goto-char body-start)
+          (cond
+           ((= status 200)
+            (setq n-tuple (langtool-client--parse-response-body headers)))
+           (t
+            (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
+          (kill-buffer pbuf)))
+      (cond
+       (errmsg
+        (langtool--check-finish source errmsg))
+       (t
+        (langtool--lazy-apply-checks proc n-tuple))))))
+
+(defun langtool-client--process-filter (proc event)
+  (langtool--debug "Filter" "%s" event)
+  (with-current-buffer (process-buffer proc)
+    (goto-char (point-max))
+    (insert event)))
+
+(defun langtool-client--make-post-data (file begin finish lang)
+  (let (text)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (setq text (buffer-string)))
+    (let* ((disabled-rules (langtool--disabled-rules))
+           (language (cond
+                      ((stringp (or lang langtool-default-language))
+                       (or lang langtool-default-language))
+                      (t
+                       "auto")))
+           (query `(
+                    ("language" ,language)
+                    ("text" ,text)
+                    ,@(and langtool-mother-tongue
+                           `(("motherTongue" ,langtool-mother-tongue)))
+                    ("disabled" ,disabled-rules)
+                    ))
+           query-string)
+      (when (and langtool-client-filter-query-function
+                 (functionp langtool-client-filter-query-function))
+        (setq query (funcall langtool-client-filter-query-function query)))
+      ;; UTF-8 encoding if value is multibyte character
+      (setq query-string (url-build-query-string query))
+      query-string)))
+
+(defun langtool-client--http-post (server data)
+  (let* ((host (process-get server 'langtool-server-host))
+         (port (process-get server 'langtool-server-port))
+         (buffer (langtool--process-create-client-buffer))
+         (url-path "/v2/check")
+         (client (let ((coding-system-for-write 'binary)
+                       (coding-system-for-read 'utf-8-unix))
+                   (open-network-stream
+                    "LangtoolHttpClient" buffer host port
+                    :type 'plain))))
+    (process-send-string
+     client
+     (concat
+      (format "POST %s HTTP/1.1\r\n" url-path)
+      (format "Host: %s:%d\r\n" host port)
+      (format "Content-length: %d\r\n" (length data))
+      (format "Content-Type: application/x-www-form-urlencoded\r\n")
+      (format "\r\n")
+      data))
+    (process-send-eof client)
+    client))
+
+(defun langtool-client--invoke-process (file begin finish &optional lang)
+  (let* ((data (langtool-client--make-post-data  file begin finish lang))
+         (proc (langtool-client--http-post langtool-server--process data)))
+    (set-process-sentinel proc 'langtool-client--process-sentinel)
+    (set-process-filter proc 'langtool-client--process-filter)
+    (process-put proc 'langtool-source-buffer (current-buffer))
+    (process-put proc 'langtool-region-begin begin)
+    (process-put proc 'langtool-region-finish finish)
+    proc))
+
+;;
+;; HTTP or commandline interface caller
+;;
+
+(defun langtool--invoke-checker-process (file begin finish &optional lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
   (langtool--clear-buffer-overlays)
-  (cl-destructuring-bind (command args)
-      (langtool--basic-command&args)
-    ;; Construct arguments pass to jar file.
-    (setq args (append
-                args
-                (list "-c" (langtool--java-coding-system
-                            buffer-file-coding-system)
-                      "-l" (or lang langtool-default-language)
-                      "-d" (langtool--disabled-rules))))
-    (when langtool-mother-tongue
-      (setq args (append args (list "-m" langtool-mother-tongue))))
-    (setq args (append args (langtool--custom-arguments 'langtool-user-arguments)))
-    (setq args (append args (list (langtool--process-file-name file))))
-    (langtool--debug "Command" "%s: %s" command args)
-    (let* ((buffer (langtool--process-create-buffer))
-           (proc (langtool--with-java-environ
-                  (apply 'start-process "LanguageTool" buffer command args))))
-      (set-process-filter proc 'langtool--process-filter)
-      (set-process-sentinel proc 'langtool--process-sentinel)
-      (process-put proc 'langtool-source-buffer (current-buffer))
-      (process-put proc 'langtool-region-begin begin)
-      (process-put proc 'langtool-region-finish finish)
-      (setq langtool-buffer-process proc)
-      (setq langtool-mode-line-message
-            (list " LanguageTool"
-                  (propertize ":run" 'face compilation-info-face))))))
-
-(defun langtool--process-sentinel (proc event)
-  (when (memq (process-status proc) '(exit signal))
-    (let ((source (process-get proc 'langtool-source-buffer))
-          (code (process-exit-status proc))
-          (pbuf (process-buffer proc))
-          dead marks msg face)
-      (when (/= code 0)
-        (setq face compilation-error-face))
-      (cond
-       ((buffer-live-p source)
-        (with-current-buffer source
-          (setq marks (langtool--overlays-region (point-min) (point-max)))
-          (setq face (if marks compilation-info-face compilation-warning-face))
-          (setq langtool-buffer-process nil)
-          (setq langtool-mode-line-message
-                (list " LanguageTool"
-                      (propertize ":exit" 'face face)))))
-       (t (setq dead t)))
-      (cond
-       (dead)
-       ((/= code 0)
-        (let ((msg
-               (if (buffer-live-p pbuf)
-                   ;; Get first line of output.
-                   (with-current-buffer pbuf
-                     (goto-char (point-min))
-                     (buffer-substring (point) (point-at-eol)))
-                 "Buffer was dead")))
-          (message "LanguageTool exited abnormally with code %d (%s)"
-                   code msg)))
-       (marks
-        (run-hooks 'langtool-error-exists-hook)
-        (message "%s"
-                 (substitute-command-keys
-                  "Type \\[langtool-correct-buffer] to correct buffer.")))
-       (t
-        (run-hooks 'langtool-noerror-hook)
-        (message "LanguageTool successfully finished with no error.")))
-      (when (buffer-live-p pbuf)
-        (kill-buffer pbuf)))))
+  (let (proc)
+    (cl-ecase (langtool--checker-mode)
+      ('commandline
+       (setq proc (langtool-command--invoke-process file begin finish lang)))
+      ('http
+       (langtool-server--ensure-running)
+       (setq langtool-mode-line-server-process
+             (propertize ":server" 'face compilation-info-face))
+       (add-hook 'langtool-server--process-exit-hook
+                 (lambda ()
+                   (setq langtool-mode-line-server-process nil)))
+       (setq proc (langtool-client--invoke-process file begin finish lang))))
+    (setq langtool-buffer-process proc)
+    (setq langtool-mode-line-process
+          (propertize ":run" 'face compilation-info-face))
+    (setq langtool-mode-line-message
+          (list " "
+                "LT"
+                'langtool-mode-line-server-process
+                'langtool-mode-line-process))))
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
   (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
     (when cell
       (remq cell mode-line-process)))
-  (when langtool-buffer-process
+  (when (and langtool-buffer-process
+             (processp langtool-buffer-process))
+    ;; TODO buffer killed, error. if process is local process (e.g. urllib)
     (delete-process langtool-buffer-process))
   (kill-local-variable 'langtool-buffer-process)
   (kill-local-variable 'langtool-mode-line-message)
   (kill-local-variable 'langtool-local-disabled-rules)
   (langtool--clear-buffer-overlays)
   (run-hooks 'langtool-finish-hook))
+
+(defun langtool--check-command ()
+  (cl-ecase (langtool--checker-mode)
+    ('commandline
+     (langtool-command--check-command))
+    ('http
+     (langtool-server--check-command))))
 
 ;;FIXME
 ;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
@@ -839,21 +1246,45 @@ Ordinary no need to change this."
       (funcall 'coding-system-aliases coding-system)
     (coding-system-get coding-system 'alias-coding-systems)))
 
+(defun langtool--brief-execute (langtool-args parser)
+  (pcase (langtool--basic-command&args)
+    (`(,command ,args)
+     ;; Construct arguments pass to jar file.
+     (setq args (append args langtool-args))
+     (with-temp-buffer
+       (when (and command args
+                  (executable-find command)
+                  (= (langtool--with-java-environ
+                      (apply 'call-process command nil t nil args) 0)))
+         (goto-char (point-min))
+         (funcall parser))))
+    (_
+     nil)))
+
 (defun langtool--available-languages ()
-  (cl-destructuring-bind (command args)
-      (langtool--basic-command&args)
-    ;; Construct arguments pass to jar file.
-    (setq args (append args (list "--list")))
-    (let (res)
-      (with-temp-buffer
-        (when (and command args
-                   (executable-find command)
-                   (= (langtool--with-java-environ
-                       (apply 'call-process command nil t nil args) 0)))
-          (goto-char (point-min))
-          (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
-            (setq res (cons (match-string 1) res)))
-          (nreverse res))))))
+  (langtool--brief-execute
+   (list "--list")
+   (lambda ()
+     (let ((res '()))
+       (while (re-search-forward "^\\([^\s\t]+\\)" nil t)
+         (setq res (cons (match-string 1) res)))
+       (nreverse res)))))
+
+(defun langtool--jar-version-string ()
+  (langtool--brief-execute
+   (list "--version")
+   (lambda ()
+     (langtool--chomp (buffer-string)))))
+
+(defun langtool--jar-version ()
+  (let ((string (langtool--jar-version-string)))
+    (cond
+     ((null string) nil)
+     ((string-match "version \\([0-9.]+\\)" string)
+      (match-string 1 string))
+     (t
+      ;; Unknown version, but should not raise error in this function.
+      "0.0"))))
 
 ;;
 ;; interactive correction
@@ -1082,10 +1513,14 @@ See the Commentary section for `popup' implementation."
 ;;;
 
 (defun langtool-read-lang-name ()
-  (let ((completion-ignore-case t))
-    (completing-read "Lang: "
-                     (or (mapcar 'list (langtool--available-languages))
-                         locale-language-names))))
+  (let ((completion-ignore-case t)
+        (set
+         (append
+          '(("auto" . auto))
+          (or (mapcar 'list (langtool--available-languages))
+              (mapcar (lambda (x) (list (car x))) locale-language-names)))))
+    (let ((key (completing-read "Lang: " set)))
+      (or (cdr (assoc key set)) key))))
 
 (defun langtool-goto-next-error ()
   "Obsoleted function. Should use `langtool-correct-buffer'.
@@ -1153,7 +1588,7 @@ Restrict to selection when region is activated.
     (when region-p
       (deactivate-mark))
     (unless langtool-temp-file
-      (setq langtool-temp-file (make-temp-file "langtool-")))
+      (setq langtool-temp-file (langtool--make-temp-file)))
     ;; create temporary file to pass the text contents to LanguageTool
     (when (or (null file)
               (buffer-modified-p)
@@ -1170,12 +1605,12 @@ Restrict to selection when region is activated.
           ;; BEGIN nil means entire buffer
           (write-region begin finish langtool-temp-file nil 'no-msg))
         (setq file langtool-temp-file)))
-    (langtool--invoke-process file begin finish lang)
+    (langtool--invoke-checker-process file begin finish lang)
     (force-mode-line-update)))
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
-  "Switch `langtool-read-lang-name' to LANG"
+  "Switch `langtool-default-language' to LANG"
   (interactive (list (langtool-read-lang-name)))
   (setq langtool-default-language lang)
   (message "Now default language is `%s'" lang))
@@ -1193,13 +1628,19 @@ Restrict to selection when region is activated.
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
 
+(defun langtool-server-stop ()
+  "Terminate LanguageTool HTTP server."
+  (interactive)
+  (langtool-server-ensure-stop)
+  (message "Server is terminated."))
+
 (defun langtool-toggle-debug ()
   "Toggle LanguageTool debugging."
   (interactive)
   (setq langtool--debug (not langtool--debug))
   (if langtool--debug
-      (message "LanguageTool debug ON.")
-    (message "LanguageTool debug off.")))
+      (message "Langtool debug ON.")
+    (message "Langtool debug off.")))
 
 ;;;
 ;;; initialize
@@ -1208,9 +1649,7 @@ Restrict to selection when region is activated.
 ;; initialize custom variables guessed from environment.
 (let ((mt (langtool--guess-language)))
   (unless langtool-mother-tongue
-    (setq langtool-mother-tongue mt))
-  (unless langtool-default-language
-    (setq langtool-default-language (or mt "en-GB"))))
+    (setq langtool-mother-tongue mt)))
 
 (provide 'langtool)
 
