@@ -151,9 +151,6 @@
 ;;; Code:
 
 
-;;TODO check commandline output and json output difference
-;;TODO cygwin
-
 (require 'cl-lib)
 (require 'compile)
 (require 'json)
@@ -1029,7 +1026,7 @@ Ordinary no need to change this."
                        (len (cdr (assoc 'length match)))
                        (rule (cdr (assoc 'rule match)))
                        (rule-id (cdr (assoc 'id rule)))
-                       (replacements (cdr (assoc 'replacements rule)))
+                       (replacements (cdr (assoc 'replacements match)))
                        (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
                        (msg1 (cdr (assoc 'message match)))
                        ;; rest of line. Point the raw message.
@@ -1113,14 +1110,16 @@ Ordinary no need to change this."
          (port (process-get server 'langtool-server-port))
          (buffer (langtool--process-create-client-buffer))
          (url-path "/v2/check")
-         (client (open-network-stream
-                  "LangtoolHttpClient" buffer host port
-                  :type 'plain)))
+         (client (let ((coding-system-for-write 'binary)
+                       (coding-system-for-read 'utf-8-unix))
+                   (open-network-stream
+                    "LangtoolHttpClient" buffer host port
+                    :type 'plain))))
     (process-send-string
      client
      (concat
       (format "POST %s HTTP/1.1\r\n" url-path)
-      (format "Host: %s\r\n" host)
+      (format "Host: %s:%d\r\n" host port)
       (format "Content-length: %d\r\n" (length data))
       (format "Content-Type: application/x-www-form-urlencoded\r\n")
       (format "\r\n")
