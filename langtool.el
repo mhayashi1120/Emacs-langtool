@@ -453,13 +453,13 @@ Call just before POST with `application/x-www-form-urlencoded'."
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--compute-start&end (version tuple)
-  (let ((line (nth 0 tuple))
-        (col (nth 1 tuple))
-        (len (nth 2 tuple))
-        (context (nth 7 tuple))
+(defun langtool--compute-start&end (version check)
+  (let ((line (nth 0 check))
+        (col (nth 1 check))
+        (len (nth 2 check))
+        (context (nth 7 check))
         ;; Only Server <-> Client have the data
-        (offset (nth 8 tuple)))
+        (offset (nth 8 check)))
     (cond
      (offset
       (let* ((start (+ (point-min) offset))
@@ -471,14 +471,14 @@ Call just before POST with `application/x-www-form-urlencoded'."
       (forward-char col)
       (cons (point) (+ (point) len))))))
 
-(defun langtool--create-overlay (version tuple)
+(defun langtool--create-overlay (version check)
   (cl-destructuring-bind (start . end)
-      (langtool--compute-start&end version tuple)
+      (langtool--compute-start&end version check)
     (let ((ov (make-overlay start end)))
-      (overlay-put ov 'langtool-simple-message (nth 4 tuple))
-      (overlay-put ov 'langtool-message (nth 5 tuple))
-      (overlay-put ov 'langtool-suggestions (nth 3 tuple))
-      (overlay-put ov 'langtool-rule-id (nth 6 tuple))
+      (overlay-put ov 'langtool-simple-message (nth 4 check))
+      (overlay-put ov 'langtool-message (nth 5 check))
+      (overlay-put ov 'langtool-suggestions (nth 3 check))
+      (overlay-put ov 'langtool-rule-id (nth 6 check))
       (overlay-put ov 'priority 1)
       (overlay-put ov 'face 'langtool-errline))))
 
@@ -749,7 +749,7 @@ Ordinary no need to change this."
    (t
     (error "There is no valid setting."))))
 
-(defun langtool--apply-checks (proc n-tuple)
+(defun langtool--apply-checks (proc checks)
   (let ((source (process-get proc 'langtool-source-buffer))
         (version (process-get proc 'langtool-jar-version))
         (begin (process-get proc 'langtool-region-begin))
@@ -761,11 +761,11 @@ Ordinary no need to change this."
             (when (and begin finish)
               (narrow-to-region begin finish))
             (mapc
-             (lambda (tuple)
-               (langtool--create-overlay version tuple))
-             (nreverse n-tuple))))))))
+             (lambda (check)
+               (langtool--create-overlay version check))
+             (nreverse checks))))))))
 
-(defun langtool--lazy-apply-checks (proc n-tuple)
+(defun langtool--lazy-apply-checks (proc checks)
   (let ((source (process-get proc 'langtool-source-buffer))
         (version (process-get proc 'langtool-jar-version))
         (begin (process-get proc 'langtool-region-begin))
@@ -777,11 +777,11 @@ Ordinary no need to change this."
             (when (and begin finish)
               (narrow-to-region begin finish))
             (cond
-             ((consp n-tuple)
-              (langtool--create-overlay version (car n-tuple))
+             ((consp checks)
+              (langtool--create-overlay version (car checks))
               (run-with-idle-timer
                1 nil 'langtool--lazy-apply-checks
-               proc (cdr n-tuple)))
+               proc (cdr checks)))
              (t
               (let ((source (process-get proc 'langtool-source-buffer)))
                 (langtool--check-finish source nil))))))))))
@@ -872,7 +872,7 @@ Ordinary no need to change this."
     (insert event)
     (let ((min (or (process-get proc 'langtool-process-done)
                    (point-min)))
-          n-tuple)
+          checks)
       (goto-char min)
       (while (re-search-forward langtool-output-regexp nil t)
         (let* ((line (string-to-number (match-string 1)))
@@ -889,12 +889,12 @@ Ordinary no need to change this."
                (suggestions (and suggest (split-string suggest "; ")))
                (context (langtool--pointed-context-regexp msg2))
                (len (langtool--pointed-length msg2)))
-          (setq n-tuple (cons
+          (setq checks (cons
                          (list line column len suggestions
                                msg1 message rule-id context)
-                         n-tuple))))
+                         checks))))
       (process-put proc 'langtool-process-done (point))
-      (langtool--apply-checks proc n-tuple))))
+      (langtool--apply-checks proc checks))))
 
 (defun langtool-command--process-sentinel (proc event)
   (unless (process-live-p proc)
@@ -1020,7 +1020,7 @@ Ordinary no need to change this."
 (defun langtool-client--parse-response-body/json ()
   (let* ((json (json-read))
          (matches (cdr (assoc 'matches json)))
-         n-tuple)
+         checks)
     (cl-loop for match across matches
              do (let* ((offset (cdr (assoc 'offset match)))
                        (len (cdr (assoc 'length match)))
@@ -1037,12 +1037,12 @@ Ordinary no need to change this."
                                 msg2))
                        (context nil)
                        line column)
-                  (setq n-tuple (cons
+                  (setq checks (cons
                                  (list line column len suggestions
                                        msg1 message rule-id context
                                        offset)
-                                 n-tuple))))
-    (nreverse n-tuple)))
+                                 checks))))
+    (nreverse checks)))
 
 (defun langtool-client--parse-response-body (http-headers)
   (let ((ct (cdr (assoc-string "content-type" http-headers t))))
@@ -1056,14 +1056,14 @@ Ordinary no need to change this."
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
           (source (process-get proc 'langtool-source-buffer))
-          errmsg n-tuple)
+          errmsg checks)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
             (langtool-http--parse-response-header)
           (goto-char body-start)
           (cond
            ((= status 200)
-            (setq n-tuple (langtool-client--parse-response-body headers)))
+            (setq checks (langtool-client--parse-response-body headers)))
            (t
             (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
           (kill-buffer pbuf)))
@@ -1071,7 +1071,7 @@ Ordinary no need to change this."
        (errmsg
         (langtool--check-finish source errmsg))
        (t
-        (langtool--lazy-apply-checks proc n-tuple))))))
+        (langtool--lazy-apply-checks proc checks))))))
 
 (defun langtool-client--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)
