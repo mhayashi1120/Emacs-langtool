@@ -53,7 +53,7 @@ These settings are optional:
 ```
 
 * Default language is detected by LanguageTool automatically.
-  Please set `langtool-default-language` if you need to specify value.
+  Please set `langtool-default-language` if you need specific language.
 
 ```
 (setq langtool-default-language "en-US")
