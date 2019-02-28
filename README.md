@@ -4,7 +4,7 @@ langtool.el
 ## Install:
 
 Install LanguageTool version 3.0 or later (and java)
-http://www.languagetool.org/
+https://languagetool.org/
 
 Put this file into load-path'ed directory, and byte compile it if
 desired. And put the following expression into your ~/.emacs.
