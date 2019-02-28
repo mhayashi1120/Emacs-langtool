@@ -1095,7 +1095,7 @@ Ordinary no need to change this."
                     ("text" ,text)
                     ,@(and langtool-mother-tongue
                            `(("motherTongue" ,langtool-mother-tongue)))
-                    ("disabled" ,disabled-rules)
+                    ("disabledRules" ,disabled-rules)
                     ))
            query-string)
       (when (and langtool-client-filter-query-function
