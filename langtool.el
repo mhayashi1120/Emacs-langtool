@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.0.0
+;; Version: 2.0.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -897,6 +897,7 @@ Ordinary no need to change this."
       (langtool--apply-checks proc checks))))
 
 (defun langtool-command--process-sentinel (proc event)
+  (langtool--debug "Sentinel" "event: %s" event)
   (unless (process-live-p proc)
     (let ((code (process-exit-status proc))
           (pbuf (process-buffer proc))
@@ -990,6 +991,7 @@ Ordinary no need to change this."
 (defvar langtool-server--process-exit-hook nil)
 
 (defun langtool-server--process-sentinel (proc event)
+  (langtool--debug "Sentinel" "event: %s" event)
   (unless (process-live-p proc)
     (run-hooks 'langtool-server--process-exit-hook)))
 
@@ -1002,15 +1004,17 @@ Ordinary no need to change this."
       ;; jar Default setting is "HTTPSServer" .
       ;; This application no need to use SSL since local app.
       ;; http://wiki.languagetool.org/http-server
+      (setq args (append args (list
+                               "-cp" (langtool--process-file-name
+                                      langtool-language-tool-server-jar))))
       (setq args (append args (list "org.languagetool.server.HTTPServer")))
       (setq args (append args langtool-server-user-arguments))
+      (langtool--debug "HTTPServer" "%s: %s" command args)
       (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
              (proc (apply
                     'start-process
                     "LangtoolHttpServer" buffer
                     langtool-java-bin
-                    "-cp" (langtool--process-file-name
-                           langtool-language-tool-server-jar)
                     args)))
         (langtool-server--rendezvous proc buffer)
         (set-process-sentinel proc 'langtool-server--process-sentinel)
