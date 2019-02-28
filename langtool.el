@@ -1000,7 +1000,8 @@ Ordinary no need to change this."
   (unless (and (processp langtool-server--process)
                (eq (process-status langtool-server--process) 'run))
     (setq langtool-server--process nil)
-    (let* ((args '()))
+    (let* ((bin langtool-java-bin)
+           (args '()))
       ;; jar Default setting is "HTTPSServer" .
       ;; This application no need to use SSL since local app.
       ;; http://wiki.languagetool.org/http-server
@@ -1009,12 +1010,12 @@ Ordinary no need to change this."
                                       langtool-language-tool-server-jar))))
       (setq args (append args (list "org.languagetool.server.HTTPServer")))
       (setq args (append args langtool-server-user-arguments))
-      (langtool--debug "HTTPServer" "%s: %s" command args)
+      (langtool--debug "HTTPServer" "%s: %s" bin args)
       (let* ((buffer (get-buffer-create " *LangtoolHttpServer* "))
              (proc (apply
                     'start-process
                     "LangtoolHttpServer" buffer
-                    langtool-java-bin
+                    bin
                     args)))
         (langtool-server--rendezvous proc buffer)
         (set-process-sentinel proc 'langtool-server--process-sentinel)
