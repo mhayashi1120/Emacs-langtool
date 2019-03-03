@@ -744,7 +744,8 @@ Ordinary no need to change this."
    (langtool-language-tool-server-jar
     'http)
    ((or langtool-language-tool-jar
-        langtool-java-classpath)
+        langtool-java-classpath
+        langtool-bin)
     'commandline)
    (t
     (error "There is no valid setting."))))
