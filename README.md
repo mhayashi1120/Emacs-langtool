@@ -153,3 +153,66 @@ M-x langtool-show-message-at-point
 M-x langtool-check-done
 ```
 
+* To filter errors to display per major mode
+
+For `org-mode`,
+```
+(eval-after-load 'org-mode
+  '(progn
+     (setq langtool-generic-check-predicate
+           '(lambda (start end)
+              ;; set up for `org-mode'
+              (let* ((begin-regexp "^[ \t]*#\\+begin_\\(src\\|html\\|latex\\|example\\|quote\\)")
+                     (end-regexp "^[ \t]*#\\+end_\\(src\\|html\\|latex\\|example\\|quote\\)")
+                     (case-fold-search t)
+                     (ignored-font-faces '(org-verbatim
+                                           org-block-begin-line
+                                           org-meta-line
+                                           org-tag
+                                           org-link
+                                           org-level-1
+                                           org-document-info))
+                     (rlt t)
+                     ff
+                     th
+                     b e)
+                (save-excursion
+                  (goto-char start)
+
+                  ;; get current font face
+                  (setq ff (get-text-property start 'face))
+                  (if (listp ff) (setq ff (car ff)))
+
+                  ;; ignore certain errors by set rlt to nil
+                  (cond
+                   ((memq ff ignored-font-faces)
+                    ;; check current font face
+                    (setq rlt nil))
+                   ((string-match "^ *- $" (buffer-substring (line-beginning-position) (+ start 2)))
+                    ;; dash character of " - list item 1"
+                    (setq rlt nil))
+                   ((and (setq th (thing-at-point 'evil-WORD))
+                         (or (string-match "^=[^=]*=[,.]?$" th)
+                             (string-match "^\\[\\[" th)))
+                    ;; embedded cde like =w3m= or org-link [[http://google.com][google]] or [[www.google.com]]
+                    ;; langtool could finish checking before major mode prepare font face for all texts
+                    (setq rlt nil))
+                   (t
+                    ;; inside source block?
+                    (setq b (re-search-backward begin-regexp nil t))
+                    (if b (setq e (re-search-forward end-regexp nil t)))
+                    (if (and b e (< start e)) (setq rlt nil)))))
+                ;; (if rlt (message "start=%s end=%s ff=%s" start end ff))
+                rlt)))))
+```
+
+Only check text inside comment or string when coding,
+```
+(eval-after-load 'prog-mode
+  '(progn
+     (unless (featurep 'flyspell) (require 'flyspell))
+     (setq langtool-generic-check-predicate
+           '(lambda (start end)
+              (let* ((f (get-text-property start 'face)))
+                (memq f flyspell-prog-text-faces))))))
+```
