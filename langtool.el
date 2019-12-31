@@ -949,7 +949,6 @@ Ordinary no need to change this."
     (cond
      ((re-search-forward (eval-when-compile
                            (concat
-                            "^"
                             "Starting LanguageTool "
                             "\\([0-9.]+\\)\\(?:-SNAPSHOT\\)? "
                             ".+?"
@@ -971,7 +970,7 @@ Ordinary no need to change this."
       (save-excursion
         (while t
           (goto-char (point-min))
-          (when (re-search-forward "^Server started" nil t)
+          (when (re-search-forward "Server started" nil t)
             (cl-destructuring-bind (version host port)
                 (langtool-server--parse-initial-buffer)
               (when (version< version "4.0")
