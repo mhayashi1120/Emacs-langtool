@@ -953,7 +953,7 @@ Ordinary no need to change this."
                             "\\([0-9.]+\\)\\(?:-SNAPSHOT\\)? "
                             ".+?"
                             "server on https?://\\([^:]+\\):\\([0-9]+\\)"
-                            "\.\.\."
+                            "\\.\\.\\."
                             "$"))
                          nil t))
      (t
@@ -1168,7 +1168,7 @@ Ordinary no need to change this."
           (propertize ":run" 'face compilation-info-face))
     (setq langtool-mode-line-message
           (list " "
-                "LT"
+                "LT"                    ; LT <= LanguageTool shorthand
                 'langtool-mode-line-server-process
                 'langtool-mode-line-process))))
 
