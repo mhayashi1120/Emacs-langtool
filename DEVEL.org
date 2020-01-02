@@ -12,11 +12,14 @@ https://wiki.debian.org/JavaPackage
    To indicate `langtool-language-tool-jar`
 
 2. make check
+  Currently almost test is empty although.
 
-3. Try to check some buffer. (C-x 4 w)
-   Try to correct buffer (C-x 4 c)
+3. Manual tests.
+  Try to check some buffer. (C-x 4 w)
+  Try to correct buffer (C-x 4 c)
 
-
-
-
-
+  1. Command line
+  2. Server <-> Client
+  3. Client
+    manually invoke following in shell:
+    java "-cp" *langtool-language-tool-server-jar* "org.languagetool.server.HTTPServer" "-p" "8082"
