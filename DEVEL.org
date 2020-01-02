@@ -16,10 +16,16 @@ https://wiki.debian.org/JavaPackage
 
 3. Manual tests.
   Try to check some buffer. (C-x 4 w)
-  Try to correct buffer (C-x 4 c)
 
   1. Command line
   2. Server <-> Client
   3. Client
     manually invoke following in shell:
-    java "-cp" *langtool-language-tool-server-jar* "org.languagetool.server.HTTPServer" "-p" "8082"
+    java -cp *langtool-language-tool-server-jar* org.languagetool.server.HTTPServer -p 8082
+    
+    set following:
+    (setq langtool-http-server-host "localhost"
+          langtool-http-server-port 8082)
+
+  Try to correct buffer (C-x 4 c)
+
