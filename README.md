@@ -59,7 +59,9 @@ If you have running HTTP server instance on any machine:
       langtool-http-server-port 8082)
 ```
 
-Now testing although, that running instance is working under HTTPSServer:
+Now testing although, that running instance is working under HTTPSServer or via
+general ssl support (e.g. nginx) following may be working. Again, this is now
+testing, so please open issue when the ssl/tls connection is not working.
 
 ```
 (setq langtool-http-server-stream-type 'tls)

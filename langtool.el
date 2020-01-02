@@ -69,8 +69,10 @@
 ;;
 ;;     (setq langtool-http-server-host "localhost"
 ;;           langtool-http-server-port 8082)
-
-;; Now testing although, that running instance is working under HTTPSServer:
+;;
+;; Now testing although, that running instance is working under HTTPSServer or via
+;; general ssl support (e.g. nginx) following may be working. Again, this is now
+;; testing, so please open issue when the ssl/tls connection is not working.
 ;;
 ;;     (setq langtool-http-server-stream-type 'tls)
 
@@ -281,8 +283,9 @@ Please set `langtool-http-server-port' either.
   :type 'number)
 
 (defcustom langtool-http-server-stream-type nil
-  "This is now testing and not tested yet. Pass to `open-network-stream' `:type' argument.
-Valid arguments are same as above except `nil'. This means `plain'."
+  "This is now testing and not enough tested yet. This value is passed to
+`open-network-stream' `:type' argument.
+Valid arguments are same to above except `nil'. This means `plain'."
   :group 'langtool
   :type 'symbol)
 
