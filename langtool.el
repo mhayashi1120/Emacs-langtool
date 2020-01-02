@@ -754,16 +754,17 @@ Ordinary no need to change this."
 ;;
 
 (defun langtool--checker-mode ()
+  ;; NOTE: This priority is order by light weight.
   (cond
+   ((and langtool-http-server-host
+         langtool-http-server-port)
+    'http-client)
    (langtool-language-tool-server-jar
     'client-server)
    ((or langtool-language-tool-jar
         langtool-java-classpath
         langtool-bin)
     'commandline)
-   ((and langtool-http-server-host
-         langtool-http-server-port)
-    'http-client)
    (t
     (error "There is no valid setting."))))
 
@@ -960,7 +961,8 @@ Ordinary no need to change this."
 (defun langtool-adapter-ensure-terminate ()
   (when langtool-adapter--plist
     (let ((finalizer (plist-get (cdr langtool-adapter--plist) 'finalizer)))
-      (funcall finalizer))
+      (when finalizer
+        (funcall finalizer)))
     (setq langtool-adapter--plist nil)))
 
 (defun langtool-adapter-get (key)
@@ -981,7 +983,7 @@ Ordinary no need to change this."
     (error "languagetool-server jar file is not readable")))
 
 (defun langtool-http-client-check-command ()
-  ;;TODO no need check?
+  ;; Currently no need to check command. Just HTTP post.
   )
 
 (defun langtool-server-ensure-stop (proc)
@@ -1048,6 +1050,7 @@ Ordinary no need to change this."
   (unless (let ((proc (langtool-adapter-get 'process)))
             (and  (processp proc)
                   (eq (process-status proc) 'run)))
+    (langtool-adapter-ensure-terminate)
     (let* ((bin langtool-java-bin)
            (args '()))
       ;; jar Default setting is "HTTPSServer" .
@@ -1067,8 +1070,8 @@ Ordinary no need to change this."
                     args)))
         (langtool-server--rendezvous proc buffer)
         (set-process-sentinel proc 'langtool-server--process-sentinel)
-        (langtool-adapter-ensure-internal proc))))
-  proc)
+        (langtool-adapter-ensure-internal proc)
+        proc))))
 
 (defun langtool-client--parse-response-body/json ()
   (let* ((json (json-read))
@@ -1202,6 +1205,8 @@ Ordinary no need to change this."
   (let (proc)
     (cl-ecase (langtool--checker-mode)
       ('commandline
+       ;; Ensure adapter is closed. That has been constructed other checker-mode.
+       (langtool-adapter-ensure-terminate)
        (setq proc (langtool-command--invoke-process file begin finish lang)))
       ('client-server
        (langtool-server--ensure-running)
@@ -1212,6 +1217,10 @@ Ordinary no need to change this."
                    (setq langtool-mode-line-server-process nil)))
        (setq proc (langtool-client--invoke-process file begin finish lang)))
       ('http-client
+       (langtool-adapter-ensure-terminate)
+       ;; Construct new adapter each check.
+       ;; Maybe changed customize variable.
+       (langtool-adapter-ensure-external)
        (setq proc (langtool-client--invoke-process file begin finish lang))))
     (setq langtool-buffer-process proc)
     (setq langtool-mode-line-process
