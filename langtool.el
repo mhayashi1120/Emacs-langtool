@@ -987,15 +987,15 @@ Ordinary no need to change this."
                'port langtool-http-server-port
                'stream-type langtool-http-server-stream-type))))
 
+(defun langtool-adapter-get (key)
+  (plist-get (cdr langtool-adapter--plist) key))
+
 (defun langtool-adapter-ensure-terminate ()
   (when langtool-adapter--plist
-    (let ((finalizer (plist-get (cdr langtool-adapter--plist) 'finalizer)))
+    (let ((finalizer (langtool-adapter-get 'finalizer)))
       (when finalizer
         (funcall finalizer)))
     (setq langtool-adapter--plist nil)))
-
-(defun langtool-adapter-get (key)
-  (plist-get (cdr langtool-adapter--plist) key))
 
 ;;
 ;; LanguageTool HTTP Server <-> Client
@@ -1079,6 +1079,7 @@ Ordinary no need to change this."
   (unless (let ((proc (langtool-adapter-get 'process)))
             (and  (processp proc)
                   (eq (process-status proc) 'run)))
+    ;; Force terminate previous server process if exists.
     (langtool-adapter-ensure-terminate)
     (let* ((bin langtool-java-bin)
            (args '()))
