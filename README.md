@@ -10,8 +10,17 @@ Put this file into load-path'ed directory, and byte compile it if
 desired. And put the following expression into your ~/.emacs.
 
 ```
-(setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 (require 'langtool)
+```
+
+## Settings (required):
+
+langtool.el have 3 types of client.
+
+1. Command line
+
+```
+(setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 ```
 
 Alternatively, you can set the classpath where LanguageTool's jars reside:
@@ -22,9 +31,10 @@ Alternatively, you can set the classpath where LanguageTool's jars reside:
 (require 'langtool)
 ```
 
-You can use HTTP server implementation which is now testing.  This
-is very fast, but has security risk if there is multiple user on a
-same host. You can set both of
+2. HTTP server & client
+
+ You can use HTTP server implementation. This is very fast, but has security
+ risk if there are multiple user on a same host. You can set both of
 `langtool-language-tool-jar` and `langtool-language-tool-server-jar`
 the later is prior than the former.
 [Recommended] You should set `langtool-language-tool-jar` correctly
@@ -40,7 +50,22 @@ You can change HTTP server port number like following.
 (setq langtool-server-user-arguments '("-p" "8082"))
 ```
 
-These settings are optional:
+3. HTTP client
+
+If you have running HTTP server instance on any machine:
+
+```
+(setq langtool-http-server-host "localhost"
+      langtool-http-server-port 8082)
+```
+
+Now testing although, that running instance is working under HTTPSServer:
+
+```
+(setq langtool-http-server-stream-type 'tls)
+```
+
+## Optional settings
 
 * Key binding if you desired.
 

@@ -32,8 +32,15 @@
 ;; Put this file into load-path'ed directory, and byte compile it if
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
-;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 ;;     (require 'langtool)
+
+;; ## Settings (required):
+;;
+;; langtool.el have 3 types of client.
+
+;; 1. Command line
+;;
+;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 ;;
 ;; Alternatively, you can set the classpath where LanguageTool's jars reside:
 ;;
@@ -41,22 +48,34 @@
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ;;     (require 'langtool)
 ;;
-;; You can use HTTP server implementation which is now testing.  This
-;; is very fast, but has security risk if there is multiple user on a
-;; same host. You can set both of
+;; 2. HTTP server & client
+;;
+;;  You can use HTTP server implementation. This is very fast, but has security
+;;  risk if there are multiple user on a same host. You can set both of
 ;; `langtool-language-tool-jar' and `langtool-language-tool-server-jar'
 ;; the later is prior than the former.
 ;; [Recommended] You should set `langtool-language-tool-jar' correctly
 ;;    full of completion support like available languages.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
-
+;;
 ;; You can change HTTP server port number like following.
 ;;
 ;;     (setq langtool-server-user-arguments '("-p" "8082"))
 
-;; These settings are optional:
+;; 3. HTTP client
+;;
+;; If you have running HTTP server instance on any machine:
+;;
+;;     (setq langtool-http-server-host "localhost"
+;;           langtool-http-server-port 8082)
 
+;; Now testing although, that running instance is working under HTTPSServer:
+;;
+;;     (setq langtool-http-server-stream-type 'tls)
+
+;; ## Optional settings
+;;
 ;; * Key binding if you desired.
 ;;
 ;;     (global-set-key "\C-x4w" 'langtool-check)
@@ -249,7 +268,7 @@ Very fast, but do not use it if there is unreliable user on a same host."
 
 (defcustom langtool-http-server-host nil
   "Normally should be \"localhost\" . Do not set the untrusted host/network.
-Your post will not be encrypted application layer, so your privacy may be leaked.
+Your post may not be encrypted application layer, so your privacy may be leaked.
 
 Please set `langtool-http-server-port' either.
 "
@@ -260,6 +279,12 @@ Please set `langtool-http-server-port' either.
   "See `langtool-http-server-host' ."
   :group 'langtool
   :type 'number)
+
+(defcustom langtool-http-server-stream-type nil
+  "This is now testing and not tested yet. Pass to `open-network-stream' `:type' argument.
+Valid arguments are same as above except `nil'. This means `plain'."
+  :group 'langtool
+  :type 'symbol)
 
 (defcustom langtool-java-classpath nil
   "Custom classpath to use on special environment. (e.g. Arch Linux)
@@ -956,7 +981,8 @@ Ordinary no need to change this."
         (cons 'external
               (list
                'host langtool-http-server-host
-               'port langtool-http-server-port))))
+               'port langtool-http-server-port
+               'stream-type langtool-http-server-stream-type))))
 
 (defun langtool-adapter-ensure-terminate ()
   (when langtool-adapter--plist
@@ -1170,7 +1196,7 @@ Ordinary no need to change this."
                        (coding-system-for-read 'utf-8-unix))
                    (open-network-stream
                     "LangtoolHttpClient" buffer host port
-                    :type 'plain))))
+                    :type (or (langtool-adapter-get 'stream-type) 'plain)))))
     (process-send-string
      client
      (concat
@@ -1219,7 +1245,7 @@ Ordinary no need to change this."
       ('http-client
        (langtool-adapter-ensure-terminate)
        ;; Construct new adapter each check.
-       ;; Maybe changed customize variable.
+       ;; Since maybe change customize variable in a Emacs session.
        (langtool-adapter-ensure-external)
        (setq proc (langtool-client--invoke-process file begin finish lang))))
     (setq langtool-buffer-process proc)
