@@ -40,7 +40,18 @@ You can change HTTP server port number like following.
 (setq langtool-server-user-arguments '("-p" "8082"))
 ```
 
-These settings are optional:
+### on macOS (brew install of LanguageTool)
+(from issue #19 replies)
+
+Use the following instead to set langtool-language-tool-jar:
+```
+(setq langtool-language-tool-jar (expand-file-name "languagetool-commandline.jar" "/usr/local/Cellar/languagetool/n.n/libexec/")
+      langtool-java-classpath nil)
+```
+
+where n.n is the version number you installed.
+
+## Optional settings
 
 * Key binding if you desired.
 
