@@ -56,7 +56,7 @@
 ;; 2. HTTP server & client
 ;;
 ;;  You can use HTTP server implementation. This is very fast after listen server,
-;;  but has security risk if there are multiple user on a same host. 
+;;  but has security risk if there are multiple user on a same host.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
 ;;
@@ -168,7 +168,7 @@
 ;; * check only docstring (emacs-lisp-mode)
 ;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
-;; * change to --json argument to parse. 
+;; * change to --json argument to parse.
 
 ;;; Code:
 
