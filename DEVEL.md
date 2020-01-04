@@ -1,21 +1,26 @@
-* Java
+# Java
 
-** Debian(stable)
+## Debian(stable)
 
 Build new JDK to try the newest LanguageTool.
 https://wiki.debian.org/JavaPackage
 
 
 
-* Test
-1. create .test-init.el
+# Test
+
+## create .test-init.el
    To indicate `langtool-language-tool-jar`
 
-2. make check
-  Currently almost test is empty although.
+## make check
 
-3. Manual tests.
-  Try to check some buffer. (C-x 4 w)
+Currently almost test is empty although.
+
+## Manual tests
+
+### Check is working
+
+Try to check some buffer. (C-x 4 w)
 
   1. Command line
   2. Server <-> Client
@@ -27,5 +32,7 @@ https://wiki.debian.org/JavaPackage
     (setq langtool-http-server-host "localhost"
           langtool-http-server-port 8082)
 
-  Try to correct buffer (C-x 4 c)
+### Interactive correction is working
+
+Try to correct buffer (C-x 4 c)
 

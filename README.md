@@ -19,8 +19,13 @@ langtool.el have 3 types of client.
 
 1. Command line
 
+ This setting should be set, if you use rest of clients, to get full of
+ completion support. And you should be set the variables before load
+ this library.
+
 ```
 (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
+(require 'langtool)
 ```
 
 Alternatively, you can set the classpath where LanguageTool's jars reside:
@@ -33,12 +38,8 @@ Alternatively, you can set the classpath where LanguageTool's jars reside:
 
 2. HTTP server & client
 
- You can use HTTP server implementation. This is very fast, but has security
- risk if there are multiple user on a same host. You can set both of
-`langtool-language-tool-jar` and `langtool-language-tool-server-jar`
-the later is prior than the former.
-[Recommended] You should set `langtool-language-tool-jar` correctly
-   full of completion support like available languages.
+ You can use HTTP server implementation. This is very fast after listen server,
+ but has security risk if there are multiple user on a same host. 
 
 ```
 (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
