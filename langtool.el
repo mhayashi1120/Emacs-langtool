@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.1.0
+;; Version: 2.1.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -1059,7 +1059,6 @@ Ordinary no need to change this."
                        version))
               (process-put proc 'langtool-server-host host)
               (process-put proc 'langtool-server-port port)
-              (process-put proc 'langtool-jar-version version)
               (message "%s done." (current-message))
               (throw 'rendezvous t)))
           (unless (eq (process-status proc) 'run)
