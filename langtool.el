@@ -508,6 +508,14 @@ Call just before POST with `application/x-www-form-urlencoded'."
       (let* ((start (+ (point-min) offset))
              (end (+ start len)))
         (cons start end)))
+     (context
+      ;; Command-line client have a bug that point to wrong place.
+      (goto-char (point-min))
+      (forward-line (1- line))
+      ;;  1. sketchy move to column that is indicated by LanguageTool.
+      ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
+      (forward-char (1- col))
+      (langtool--fuzzy-search context len))
      (t
       (goto-char (point-min))
       (forward-line (1- line))
@@ -813,9 +821,8 @@ Ordinary no need to change this."
                (langtool--create-overlay version check))
              (nreverse checks))))))))
 
-(defun langtool--lazy-apply-checks (proc checks)
+(defun langtool--lazy-apply-checks (proc version checks)
   (let ((source (process-get proc 'langtool-source-buffer))
-        (version (process-get proc 'langtool-jar-version))
         (begin (process-get proc 'langtool-region-begin))
         (finish (process-get proc 'langtool-region-finish)))
     (when (buffer-live-p source)
@@ -829,7 +836,7 @@ Ordinary no need to change this."
               (langtool--create-overlay version (car checks))
               (run-with-idle-timer
                1 nil 'langtool--lazy-apply-checks
-               proc (cdr checks)))
+               proc version (cdr checks)))
              (t
               (let ((source (process-get proc 'langtool-source-buffer)))
                 (langtool--check-finish source nil))))))))))
@@ -1105,7 +1112,9 @@ Ordinary no need to change this."
 
 (defun langtool-client--parse-response-body/json ()
   (let* ((json (json-read))
-         (matches (cdr (assoc 'matches json)))
+         (matches (cdr (assq 'matches json)))
+         (software (cdr (assq 'software json)))
+         (version (cdr (assq 'version software)))
          checks)
     (cl-loop for match across matches
              do (let* ((offset (cdr (assoc 'offset match)))
@@ -1113,7 +1122,9 @@ Ordinary no need to change this."
                        (rule (cdr (assoc 'rule match)))
                        (rule-id (cdr (assoc 'id rule)))
                        (replacements (cdr (assoc 'replacements match)))
-                       (suggestions (mapcar (lambda (x) (cdr (assoc 'value x))) replacements))
+                       (suggestions (mapcar
+                                     (lambda (x) (cdr (assoc 'value x)))
+                                     replacements))
                        (msg1 (cdr (assoc 'message match)))
                        ;; rest of line. Point the raw message.
                        (msg2 (cdr (assoc 'shortMessage match)))
@@ -1121,6 +1132,7 @@ Ordinary no need to change this."
                         (concat "Rule ID: " rule-id "\n"
                                 msg1 "\n\n"
                                 msg2))
+                       ;; No need this value when json
                        (context nil)
                        line column)
                   (setq checks (cons
@@ -1128,7 +1140,8 @@ Ordinary no need to change this."
                                        msg1 message rule-id context
                                        offset)
                                  checks))))
-    (nreverse checks)))
+    (setq checks (nreverse checks))
+    (list version checks)))
 
 (defun langtool-client--parse-response-body (http-headers)
   (let ((ct (cdr (assoc-string "content-type" http-headers t))))
@@ -1142,22 +1155,26 @@ Ordinary no need to change this."
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
           (source (process-get proc 'langtool-source-buffer))
-          errmsg checks)
+          errmsg version checks)
       (with-current-buffer pbuf
         (cl-destructuring-bind (status headers body-start)
             (langtool-http--parse-response-header)
           (goto-char body-start)
           (cond
            ((= status 200)
-            (setq checks (langtool-client--parse-response-body headers)))
+            (cl-destructuring-bind (ver result)
+                (langtool-client--parse-response-body headers)
+              (setq checks result)
+              (setq version ver)))
            (t
             (setq errmsg (buffer-substring-no-properties (point) (point-max)))))
           (kill-buffer pbuf)))
+      ;; after cleanup buffer.
       (cond
        (errmsg
         (langtool--check-finish source errmsg))
        (t
-        (langtool--lazy-apply-checks proc checks))))))
+        (langtool--lazy-apply-checks proc version checks))))))
 
 (defun langtool-client--process-filter (proc event)
   (langtool--debug "Filter" "%s" event)

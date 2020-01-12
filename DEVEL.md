@@ -36,3 +36,12 @@ Try to check some buffer. (C-x 4 w)
 
 Try to correct buffer (C-x 4 c)
 
+
+# TODO
+
+unsupport 3.x
+
+more unit test ( for each 4.x )
+
+check version dependent code. (old code is remaining)
+
