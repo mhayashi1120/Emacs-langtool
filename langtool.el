@@ -514,7 +514,9 @@ Call just before POST with `application/x-www-form-urlencoded'."
       (forward-line (1- line))
       ;;  1. sketchy move to column that is indicated by LanguageTool.
       ;;  2. fuzzy match to reported sentence which indicated by ^^^ like string.
-      (forward-char (1- col))
+      ;;  3. restrict to the current line
+      (when (< 0 col)
+        (forward-char (1- col)))
       (langtool--fuzzy-search context len))
      (t
       (goto-char (point-min))
