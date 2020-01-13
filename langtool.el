@@ -4,7 +4,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.1.1
+;; Version: 2.2.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -890,6 +890,30 @@ Ordinary no need to change this."
   (when langtool-buffer-process
     (error "Another process is running")))
 
+(defun langtool-command--maybe-create-temp-file (&optional begin finish)
+  (let* ((file (buffer-file-name))
+         (cs buffer-file-coding-system)
+         (cs-base (coding-system-base cs))
+         custom-cs)
+    (unless langtool-temp-file
+      (setq langtool-temp-file (langtool--make-temp-file)))
+    ;; create temporary file to pass the text contents to LanguageTool
+    (when (or (null file)
+              (buffer-modified-p)
+              (and begin finish)
+              ;; 1 is dos EOL style, this must convert to unix
+              ;; dos (CR-LF) style EOL may destroy position of marker.
+              (eq (coding-system-eol-type cs) 1)
+              ;; TODO ascii like included utf-8 coding-sytem
+              (not (coding-system-equal cs-base 'utf-8)))
+      (save-restriction
+        (widen)
+        (let ((coding-system-for-write 'utf-8-unix))
+          ;; BEGIN nil means entire buffer
+          (write-region begin finish langtool-temp-file nil 'no-msg))
+        (setq file langtool-temp-file)))
+    file))
+
 (defun langtool-command--invoke-process (file begin finish &optional lang)
   (let ((version (langtool--jar-version)))
     (cl-destructuring-bind (command args)
@@ -898,9 +922,8 @@ Ordinary no need to change this."
       ;; http://wiki.languagetool.org/command-line-options
       (setq args (append
                   args
-                  (list "-c" (langtool--java-coding-system
-                              buffer-file-coding-system)
-                        "-d" (langtool--disabled-rules))))
+                  (list
+                   "-d" (langtool--disabled-rules))))
       (cond
        ((stringp (or lang langtool-default-language))
         (setq args (append args (list "-l" (or lang langtool-default-language)))))
@@ -1184,31 +1207,28 @@ Ordinary no need to change this."
     (goto-char (point-max))
     (insert event)))
 
-(defun langtool-client--make-post-data (file begin finish lang)
-  (let (text)
-    (with-temp-buffer
-      (insert-file-contents file)
-      (setq text (buffer-string)))
-    (let* ((disabled-rules (langtool--disabled-rules))
-           (language (cond
-                      ((stringp (or lang langtool-default-language))
-                       (or lang langtool-default-language))
-                      (t
-                       "auto")))
-           (query `(
-                    ("language" ,language)
-                    ("text" ,text)
-                    ,@(and langtool-mother-tongue
-                           `(("motherTongue" ,langtool-mother-tongue)))
-                    ("disabledRules" ,disabled-rules)
-                    ))
-           query-string)
-      (when (and langtool-client-filter-query-function
-                 (functionp langtool-client-filter-query-function))
-        (setq query (funcall langtool-client-filter-query-function query)))
-      ;; UTF-8 encoding if value is multibyte character
-      (setq query-string (url-build-query-string query))
-      query-string)))
+(defun langtool-client--make-post-data (&optional begin finish lang)
+  (let* ((text (buffer-substring-no-properties (or begin (point-min)) (or finish (point-max))))
+         (disabled-rules (langtool--disabled-rules))
+         (language (cond
+                    ((stringp (or lang langtool-default-language))
+                     (or lang langtool-default-language))
+                    (t
+                     "auto")))
+         (query `(
+                  ("language" ,language)
+                  ("text" ,text)
+                  ,@(and langtool-mother-tongue
+                         `(("motherTongue" ,langtool-mother-tongue)))
+                  ("disabledRules" ,disabled-rules)
+                  ))
+         query-string)
+    (when (and langtool-client-filter-query-function
+               (functionp langtool-client-filter-query-function))
+      (setq query (funcall langtool-client-filter-query-function query)))
+    ;; UTF-8 encoding if value is multibyte character
+    (setq query-string (url-build-query-string query))
+    query-string))
 
 (defun langtool-client--http-post (data)
   (let* ((host (langtool-adapter-get 'host))
@@ -1232,8 +1252,8 @@ Ordinary no need to change this."
     (process-send-eof client)
     client))
 
-(defun langtool-client--invoke-process (file begin finish &optional lang)
-  (let* ((data (langtool-client--make-post-data  file begin finish lang))
+(defun langtool-client--invoke-process (&optional begin finish lang)
+  (let* ((data (langtool-client--make-post-data begin finish lang))
          (proc (langtool-client--http-post data)))
     (set-process-sentinel proc 'langtool-client--process-sentinel)
     (set-process-filter proc 'langtool-client--process-filter)
@@ -1246,7 +1266,7 @@ Ordinary no need to change this."
 ;; HTTP or commandline interface caller
 ;;
 
-(defun langtool--invoke-checker-process (file begin finish &optional lang)
+(defun langtool--invoke-checker-process (&optional begin finish lang)
   (when (listp mode-line-process)
     (add-to-list 'mode-line-process '(t langtool-mode-line-message)))
   ;; clear previous check
@@ -1256,7 +1276,8 @@ Ordinary no need to change this."
       ('commandline
        ;; Ensure adapter is closed. That has been constructed other checker-mode.
        (langtool-adapter-ensure-terminate)
-       (setq proc (langtool-command--invoke-process file begin finish lang)))
+       (let ((file (langtool-command--maybe-create-temp-file begin finish)))
+         (setq proc (langtool-command--invoke-process file begin finish lang))))
       ('client-server
        (langtool-server--ensure-running)
        (setq langtool-mode-line-server-process
@@ -1264,13 +1285,13 @@ Ordinary no need to change this."
        (add-hook 'langtool-server--process-exit-hook
                  (lambda ()
                    (setq langtool-mode-line-server-process nil)))
-       (setq proc (langtool-client--invoke-process file begin finish lang)))
+       (setq proc (langtool-client--invoke-process begin finish lang)))
       ('http-client
        (langtool-adapter-ensure-terminate)
        ;; Construct new adapter each check.
        ;; Since maybe change customize variable in a Emacs session.
        (langtool-adapter-ensure-external)
-       (setq proc (langtool-client--invoke-process file begin finish lang))))
+       (setq proc (langtool-client--invoke-process begin finish lang))))
     (setq langtool-buffer-process proc)
     (setq langtool-mode-line-process
           (propertize ":run" 'face compilation-info-face))
@@ -1303,63 +1324,6 @@ Ordinary no need to change this."
      (langtool-server--check-command))
     ('http-client
      (langtool-http-client-check-command))))
-
-;;FIXME
-;; https://docs.oracle.com/javase/6/docs/technotes/guides/intl/encoding.doc.html
-(defun langtool--java-coding-system (coding-system)
-  (let* ((cs (coding-system-base coding-system))
-         (csname (symbol-name cs))
-         (aliases (langtool--coding-system-aliases cs))
-         (names (mapcar 'symbol-name aliases))
-         (case-fold-search nil)
-         tmp)
-    (cond
-     ((string-match "utf-8" csname)
-      "utf8")
-     ((string-match "utf-16" csname)
-      (cond
-       ((memq cs '(utf-16le utf-16-le))
-        "UnicodeLittleUnmarked")
-       ((memq cs '(utf-16be utf-16-be))
-        "UnicodeBigUnmarked")
-       (t
-        "utf-16")))
-     ((or (string-match "euc.*jp" csname)
-          (string-match "japanese-iso-.*8bit" csname))
-      "euc_jp")
-     ((string-match "shift.jis" csname)
-      "sjis")
-     ((string-match "iso.*2022.*jp" csname)
-      "iso2022jp")
-     ((memq cs '(euc-kr euc-corea korean-iso-8bit))
-      "euc_kr")
-     ((setq tmp
-            (cl-loop for x in names
-                     if (string-match "iso-8859-\\([0-9]+\\)" x)
-                     return x))
-      (concat "ISO8859_" (match-string 1 tmp)))
-     ((memq cs '(binary us-ascii raw-text undecided no-conversion))
-      "ascii")
-     ((memq cs '(cyrillic-koi8))
-      "koi8-r")
-     ((memq cs '(gb2312))
-      "euc_cn")
-     ((string-match "\\`\\(cp\\|ibm\\)[0-9]+" csname)
-      (downcase csname))
-     ((setq tmp
-            (cl-loop for x in names
-                     if (string-match "^windows-[0-9]+$" x)
-                     return x))
-      tmp)
-     (t
-      ;; simply guessed as same name.
-      (downcase csname)))))
-
-(defun langtool--coding-system-aliases (coding-system)
-  (if (fboundp 'coding-system-aliases)
-      ;; deceive elint
-      (funcall 'coding-system-aliases coding-system)
-    (coding-system-get coding-system 'alias-coding-systems)))
 
 (defun langtool--brief-execute (langtool-args parser)
   (pcase (langtool--basic-command&args)
@@ -1696,31 +1660,12 @@ Restrict to selection when region is activated.
      (list (langtool-read-lang-name))))
   (langtool--check-command)
   ;; probablly ok...
-  (let* ((file (buffer-file-name))
-         (region-p (langtool-region-active-p))
+  (let* ((region-p (langtool-region-active-p))
          (begin (and region-p (region-beginning)))
          (finish (and region-p (region-end))))
     (when region-p
       (deactivate-mark))
-    (unless langtool-temp-file
-      (setq langtool-temp-file (langtool--make-temp-file)))
-    ;; create temporary file to pass the text contents to LanguageTool
-    (when (or (null file)
-              (buffer-modified-p)
-              region-p
-              ;; 1 is dos EOL style, this must convert to unix
-              (eq (coding-system-eol-type buffer-file-coding-system) 1))
-      (save-restriction
-        (widen)
-        (let ((coding-system-for-write
-               ;; convert EOL style to unix (LF).
-               ;; dos (CR-LF) style EOL may destroy position of marker.
-               (coding-system-change-eol-conversion
-                buffer-file-coding-system 'unix)))
-          ;; BEGIN nil means entire buffer
-          (write-region begin finish langtool-temp-file nil 'no-msg))
-        (setq file langtool-temp-file)))
-    (langtool--invoke-checker-process file begin finish lang)
+    (langtool--invoke-checker-process begin finish lang)
     (force-mode-line-update)))
 
 ;;;###autoload
