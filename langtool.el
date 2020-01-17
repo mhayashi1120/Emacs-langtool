@@ -1,5 +1,7 @@
 ;;; langtool.el --- Grammar check utility using LanguageTool
 
+;; Copyright (C) 2011-2020 Masahiro Hayashi
+
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
@@ -47,12 +49,19 @@
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
 ;;     (require 'langtool)
 ;;
-;; Alternatively, you can set the classpath where LanguageTool's jars reside:
+;; Alternatively, you can set the classpath where LanguageTool's jars reside
+;; (e.g. ArchLinux):
 ;;
 ;;     (setq langtool-java-classpath
 ;;           "/usr/share/languagetool:/usr/share/java/languagetool/*")
 ;;     (require 'langtool)
 ;;
+;;
+;; You can set a script that hold java setting (e.g. Gentoo):
+;;
+;;     (setq langtool-bin "/path/to/your/langtool")
+;;     (require 'langtool)
+
 ;; 2. HTTP server & client
 ;;
 ;;  You can use HTTP server implementation. This is very fast after listen server,
@@ -66,7 +75,7 @@
 
 ;; 3. HTTP client
 ;;
-;; If you have running HTTP server instance on any machine:
+;; If you have running HTTP LanguageTool server instance on any machine:
 ;;
 ;;     (setq langtool-http-server-host "localhost"
 ;;           langtool-http-server-port 8082)
@@ -1303,7 +1312,8 @@ Ordinary no need to change this."
 
 (defun langtool--cleanup-process ()
   ;; cleanup mode-line
-  (let ((cell (rassoc '(langtool-mode-line-message) mode-line-process)))
+  (let ((cell (and (listp mode-line-process) ; Check type
+                   (rassoc '(langtool-mode-line-message) mode-line-process))))
     (when cell
       (remq cell mode-line-process)))
   (when (and langtool-buffer-process
