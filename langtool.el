@@ -899,6 +899,8 @@ Ordinary no need to change this."
   (when langtool-buffer-process
     (error "Another process is running")))
 
+;; Create utf-8-unix temporary file if need. This coding-system is
+;; troubleless, I think.
 (defun langtool-command--maybe-create-temp-file (&optional begin finish)
   (let* ((file (buffer-file-name))
          (cs buffer-file-coding-system)
@@ -913,8 +915,9 @@ Ordinary no need to change this."
               ;; 1 is dos EOL style, this must convert to unix
               ;; dos (CR-LF) style EOL may destroy position of marker.
               (eq (coding-system-eol-type cs) 1)
-              ;; TODO ascii like included utf-8 coding-sytem
-              (not (coding-system-equal cs-base 'utf-8)))
+              ;; us-ascii is included in utf-8
+              (and (not (coding-system-equal cs-base 'us-ascii))
+                   (not (coding-system-equal cs-base 'utf-8))))
       (save-restriction
         (widen)
         (let ((coding-system-for-write 'utf-8-unix))
