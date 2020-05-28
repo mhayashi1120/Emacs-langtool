@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.2.0
+;; Version: 2.2.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -153,7 +153,7 @@
 
 ;; * Show LanguageTool report automatically by `popup'
 ;;   This idea come from:
-;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
+;;   https://laclefyoshi.hatenablog.com/entry/20150912/langtool_popup
 ;;
 ;;     (defun langtool-autoshow-detail-popup (overlays)
 ;;       (when (require 'popup nil t)

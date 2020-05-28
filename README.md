@@ -166,7 +166,7 @@ M-x langtool-show-message-at-point
 
 * Show LanguageTool report automatically by `popup`
   This idea come from:
-  http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
+  https://laclefyoshi.hatenablog.com/entry/20150912/langtool_popup
 
 ```
 (defun langtool-autoshow-detail-popup (overlays)
