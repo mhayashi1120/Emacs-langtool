@@ -150,7 +150,10 @@
 ;;   Otherwise:
 ;;
 ;;     M-x langtool-show-message-at-point
-
+;;
+;; * Use `langtool-generic-check-predicate' to filter the errors
+;;   reported. A sample setup is provided for `org-mode'.
+;;
 ;; * Show LanguageTool report automatically by `popup'
 ;;   This idea come from:
 ;;   https://laclefyoshi.hatenablog.com/entry/20150912/langtool_popup
@@ -174,8 +177,6 @@
 ;;; TODO:
 
 ;; * process coding system (test on Windows)
-;; * check only docstring (emacs-lisp-mode)
-;;    or using (derived-mode-p 'prog-mode) and only string and comment
 ;; * java encoding <-> elisp encoding (No enough information..)
 ;; * change to --json argument to parse.
 
@@ -385,6 +386,61 @@ Call just before POST with `application/x-www-form-urlencoded'."
 ;;
 ;; local variables
 ;;
+(defvar langtool-generic-check-predicate nil
+  "Function providing per-mode customization over which regions are checked.
+The \"start\" and \"end\" is passed as parameters of predicate.
+Returns t to continue checking, nil otherwise.
+
+Sample setup for `org-mode',
+
+  (eval-after-load 'org-mode
+    '(progn
+       (setq langtool-generic-check-predicate
+             '(lambda (start end)
+                ;; set up for `org-mode'
+                (let* ((begin-regexp \"^[ \t]*#\\+begin_\\(src\\|html\\|latex\\|example\\|quote\\)\")
+                       (end-regexp \"^[ \t]*#\\+end_\\(src\\|html\\|latex\\|example\\|quote\\)\")
+                       (case-fold-search t)
+                       (ignored-font-faces '(org-verbatim
+                                             org-block-begin-line
+                                             org-meta-line
+                                             org-tag org-link
+                                             org-level-1
+                                             org-document-info))
+                       (rlt t)
+                       ff
+                       th
+                       b e)
+                  (save-excursion
+                    (goto-char start)
+
+                    ;; get current font face
+                    (setq ff (get-text-property start 'face))
+                    (if (listp ff) (setq ff (car ff)))
+
+                    ;; ignore certain errors by set rlt to nil
+                    (cond
+                     ((memq ff ignored-font-faces)
+                      ;; check current font face
+                      (setq rlt nil))
+                     ((string-match \"^ *- $\" (buffer-substring (line-beginning-position) (+ start 2)))
+                      ;; dash character of \" - list item 1\"
+                      (setq rlt nil))
+                     ((and (setq th (thing-at-point 'evil-WORD))
+                           (or (string-match \"^=[^=]*=[,.]?$\" th)
+                               (string-match \"^\\[\\[\" th)))
+                      ;; embedded cde like =w3m= or org-link [[http://google.com][Google]] or [[google.com]]
+                      ;; langtool could finish checking before major mode prepare font face for all texts
+                      (setq rlt nil))
+                     (t
+                      ;; inside source block?
+                      (setq b (re-search-backward begin-regexp nil t))
+                      (if b (setq e (re-search-forward end-regexp nil t)))
+                      (if (and b e (< start e)) (setq rlt nil)))))
+                  ;; (if rlt (message \"start=%s end=%s ff=%s\" start end ff))
+                  rlt)))))
+")
+(make-variable-buffer-local 'langtool-generic-check-predicate)
 
 (defvar langtool-local-disabled-rules nil)
 (make-variable-buffer-local 'langtool-local-disabled-rules)
@@ -536,13 +592,15 @@ Call just before POST with `application/x-www-form-urlencoded'."
 (defun langtool--create-overlay (version check)
   (cl-destructuring-bind (start . end)
       (langtool--compute-start&end version check)
-    (let ((ov (make-overlay start end)))
-      (overlay-put ov 'langtool-simple-message (nth 4 check))
-      (overlay-put ov 'langtool-message (nth 5 check))
-      (overlay-put ov 'langtool-suggestions (nth 3 check))
-      (overlay-put ov 'langtool-rule-id (nth 6 check))
-      (overlay-put ov 'priority 1)
-      (overlay-put ov 'face 'langtool-errline))))
+    (unless (and langtool-generic-check-predicate
+                 (not (funcall langtool-generic-check-predicate start end)))
+      (let ((ov (make-overlay start end)))
+        (overlay-put ov 'langtool-simple-message (nth 4 check))
+        (overlay-put ov 'langtool-message (nth 5 check))
+        (overlay-put ov 'langtool-suggestions (nth 3 check))
+        (overlay-put ov 'langtool-rule-id (nth 6 check))
+        (overlay-put ov 'priority 1)
+        (overlay-put ov 'face 'langtool-errline)))))
 
 (defun langtool--clear-buffer-overlays ()
   (mapc
