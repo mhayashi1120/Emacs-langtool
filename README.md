@@ -1,3 +1,6 @@
+[![MELPA](https://melpa.org/packages/langtool-badge.svg)](https://melpa.org/#/langtool)
+[![MELPA Stable](https://stable.melpa.org/packages/langtool-badge.svg)](https://stable.melpa.org/#/langtool)
+
 langtool.el
 ===========
 
