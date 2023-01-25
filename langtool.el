@@ -173,7 +173,7 @@
 
 ;; * Show LanguageTool report automatically by `popup'
 ;;   This idea come from:
-;;   https://laclefyoshi.hatenablog.com/entry/20150912/langtool_popup
+;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
 ;;
 ;;     (defun langtool-autoshow-detail-popup (overlays)
 ;;       (when (require 'popup nil t)
@@ -1305,12 +1305,12 @@ Ordinary no need to change this."
   (langtool--clear-buffer-overlays)
   (let (proc)
     (cl-ecase (langtool--checker-mode)
-      ('commandline
+      ((commandline)
        ;; Ensure adapter is closed. That has been constructed other checker-mode.
        (langtool-adapter-ensure-terminate)
        (let ((file (langtool-command--maybe-create-temp-file begin finish)))
          (setq proc (langtool-command--invoke-process file begin finish lang))))
-      ('client-server
+      ((client-server)
        (langtool-server--ensure-running)
        (setq langtool-mode-line-server-process
              (propertize ":server" 'face compilation-info-face))
@@ -1318,7 +1318,7 @@ Ordinary no need to change this."
                  (lambda ()
                    (setq langtool-mode-line-server-process nil)))
        (setq proc (langtool-client--invoke-process begin finish lang)))
-      ('http-client
+      ((http-client)
        (langtool-adapter-ensure-terminate)
        ;; Construct new adapter each check.
        ;; Since maybe change customize variable in a Emacs session.
@@ -1351,11 +1351,11 @@ Ordinary no need to change this."
 
 (defun langtool--check-command ()
   (cl-ecase (langtool--checker-mode)
-    ('commandline
+    ((commandline)
      (langtool-command--check-command))
-    ('client-server
+    ((client-server)
      (langtool-server--check-command))
-    ('http-client
+    ((http-client)
      (langtool-http-client-check-command))))
 
 (defun langtool--brief-execute (langtool-args parser)
