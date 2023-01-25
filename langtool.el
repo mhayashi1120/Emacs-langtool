@@ -1338,7 +1338,7 @@ Ordinary no need to change this."
   (let ((cell (and (listp mode-line-process) ; Check type
                    (rassoc '(langtool-mode-line-message) mode-line-process))))
     (when cell
-      (remq cell mode-line-process)))
+      (setq mode-line-process (remq cell mode-line-process))))
   (when (and langtool-buffer-process
              (processp langtool-buffer-process))
     ;; TODO buffer killed, error. if process is local process (e.g. urllib)
