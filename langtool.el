@@ -1,12 +1,12 @@
 ;;; langtool.el --- Grammar check utility using LanguageTool
 
-;; Copyright (C) 2011-2020 Masahiro Hayashi
+;; Copyright (C) 2011-2020,2022 Masahiro Hayashi
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.2.1
+;; Version: 2.2.2
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
