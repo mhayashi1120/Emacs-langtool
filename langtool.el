@@ -50,7 +50,7 @@
 ;;
 ;; ### LanguageTool
 ;;
-;; Can be downloaded from [here](https://languagetool.org/download/) 
+;; Can be downloaded from [here](https://languagetool.org/download/)
 ;;
 ;; `java -jar languagetool-commandline.jar --version`
 ;;
