@@ -30,11 +30,31 @@
 
 ;; Install LanguageTool version 3.0 or later (and java)
 ;; https://languagetool.org/
-
+;;
 ;; Put this file into load-path'ed directory, and byte compile it if
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool)
+
+;; ## NOTE (2023-01-25)
+;;
+;; Confirmed working on following environment
+;;
+;; ### Java
+;;
+;; `java --version`
+;;
+;; > openjdk 17.0.4 2022-07-19
+;; > OpenJDK Runtime Environment (build 17.0.4+8-Debian-1deb11u1)
+;; > OpenJDK 64-Bit Server VM (build 17.0.4+8-Debian-1deb11u1, mixed mode, sharing)
+;;
+;; ### LanguageTool
+;;
+;; Can be downloaded from [here](https://languagetool.org/download/) 
+;;
+;; `java -jar languagetool-commandline.jar --version`
+;;
+;; > LanguageTool version 6.0 (2022-12-29 12:13:11 +0000, e44dbb0)
 
 ;; ## Settings (required):
 ;;
