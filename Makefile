@@ -1,12 +1,14 @@
 EMACS = emacs
+BATCH = $(EMACS) -q -batch
+
 
 check: compile
-	$(EMACS) -q -batch -l langtool.el -l .test-init.el -l langtool-test.el \
+	$(BATCH) -l langtool.el -l .test-init.el -l langtool-test.el \
 		-f ert-run-tests-batch-and-exit
-	$(EMACS) -q -batch -l langtool.elc -l .test-init.el -l langtool-test.el \
+	$(BATCH) -l langtool.elc -l .test-init.el -l langtool-test.el \
 		-f ert-run-tests-batch-and-exit
 
 compile:
-	$(EMACS) -q -batch -f batch-byte-compile \
+	$(BATCH) -f batch-byte-compile \
 		langtool.el
 
