@@ -1,14 +1,25 @@
-EMACS = emacs
-BATCH = $(EMACS) -q -batch
+-include env.mk
 
+LOAD_PATH = -L . 
+LOAD_PATH += $(POPUP_EL_PATH)
+
+EMACS := emacs
+BATCH := $(EMACS) -Q -batch $(LOAD_PATH)
+
+EL = langtool.el
+EL += langtool-popup.el
+ELC := $(EL:%.el=%.elc)
+
+all: compile
 
 check: compile
-	$(BATCH) -l langtool.el -l .test-init.el -l langtool-test.el \
+	$(BATCH) $(EL:%=-l %)  -l .test-init.el -l langtool-test.el \
 		-f ert-run-tests-batch-and-exit
-	$(BATCH) -l langtool.elc -l .test-init.el -l langtool-test.el \
+	$(BATCH) $(ELC:%=-l %)  -l .test-init.el -l langtool-test.el \
 		-f ert-run-tests-batch-and-exit
 
 compile:
-	$(BATCH) -f batch-byte-compile \
-		langtool.el
+	$(BATCH) -f batch-byte-compile $(EL)
 
+clean:
+	rm -f $(ELC)

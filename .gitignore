@@ -1,3 +1,4 @@
 *.elc
 .test-init.el
 encodings/*
+env.mk
