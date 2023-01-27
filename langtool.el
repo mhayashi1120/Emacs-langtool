@@ -35,6 +35,8 @@
 ;; desired. And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool)
+;;
+;; Or use Melpa (https://melpa.org/)
 
 ;; ## NOTE (2023-01-25)
 ;;
