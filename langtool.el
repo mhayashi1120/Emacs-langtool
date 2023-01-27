@@ -1,6 +1,6 @@
-;;; langtool.el --- Grammar check utility using LanguageTool
+;;; langtool.el --- Grammar check utility using LanguageTool -*- lexical-binding: t -*-
 
-;; Copyright (C) 2011-2020,2022 Masahiro Hayashi
+;; Copyright (C) 2011-2020,2022-2023 Masahiro Hayashi
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
@@ -514,7 +514,9 @@ Call just before POST with `application/x-www-form-urlencoded'."
                    return (cons (match-beginning 1) (match-end 1))))
         default)))
 
-(defun langtool--compute-start&end (version check)
+;; TODO, FIXME remove _version completely. Previous version accept
+;;    difference output between another version
+(defun langtool--compute-start&end (_version check)
   (let ((line (nth 0 check))
         (col (nth 1 check))
         (len (nth 2 check))
@@ -913,8 +915,7 @@ Ordinary no need to change this."
 (defun langtool-command--maybe-create-temp-file (&optional begin finish)
   (let* ((file (buffer-file-name))
          (cs buffer-file-coding-system)
-         (cs-base (coding-system-base cs))
-         custom-cs)
+         (cs-base (coding-system-base cs)))
     (unless langtool-temp-file
       (setq langtool-temp-file (langtool--make-temp-file)))
     ;; create temporary file to pass the text contents to LanguageTool
@@ -1003,7 +1004,7 @@ Ordinary no need to change this."
     (let ((code (process-exit-status proc))
           (pbuf (process-buffer proc))
           (source (process-get proc 'langtool-source-buffer))
-          dead marks errmsg face)
+          errmsg)
       (cond
        ((buffer-live-p pbuf)
         (when (/= code 0)
@@ -1197,7 +1198,7 @@ Ordinary no need to change this."
      (t
       (error "Not a supported Content-Type %s" ct)))))
 
-(defun langtool-client--process-sentinel (proc event)
+(defun langtool-client--process-sentinel (proc _event)
   (unless (process-live-p proc)
     (let ((pbuf (process-buffer proc))
           (source (process-get proc 'langtool-source-buffer))

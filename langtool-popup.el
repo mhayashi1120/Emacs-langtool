@@ -1,6 +1,6 @@
-;;; langtool-popup.el --- Popup message extension for langtool.el
+;;; langtool-popup.el --- Popup message extension for langtool.el -*- lexical-binding: t -*-
 
-;; Copyright (C) 2022 Masahiro Hayashi
+;; Copyright (C) 2023 Masahiro Hayashi
 
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
@@ -41,6 +41,7 @@
 ;;; Code:
 
 (require 'popup)
+(require 'langtool)
 
 (defun langtool-popup-autoshow-detail (overlays)
   ;; Do not interrupt current popup
