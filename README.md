@@ -13,6 +13,8 @@ desired. And put the following expression into your ~/.emacs.
 (require 'langtool)
 ```
 
+Or use Melpa (https://melpa.org/)
+
 ## NOTE (2023-01-25)
 
 Confirmed working on following environment
@@ -27,7 +29,7 @@ Confirmed working on following environment
 
 ### LanguageTool
 
-Can be downloaded from [here](https://languagetool.org/download/) 
+Can be downloaded from [here](https://languagetool.org/download/)
 
 `java -jar languagetool-commandline.jar --version`
 
@@ -184,25 +186,8 @@ M-x langtool-correct-buffer
 M-x langtool-show-message-at-point
 ```
 
-* Show LanguageTool report automatically by `popup`
-  This idea come from:
-  https://laclefyoshi.hatenablog.com/entry/20150912/langtool_popup
-
-```
-(defun langtool-autoshow-detail-popup (overlays)
-  (when (require 'popup nil t)
-    ;; Do not interrupt current popup
-    (unless (or popup-instances
-                ;; suppress popup after type `C-g` .
-                (memq last-command '(keyboard-quit)))
-      (let ((msg (langtool-details-error-message overlays)))
-        (popup-tip msg)))))
-```
-
-```
-(setq langtool-autoshow-message-function
-      'langtool-autoshow-detail-popup)
-```
+* You can use extension package `langtool-popup` in this repository.
+  To show automatically popup the cursor.
 
 * To finish checking. All langtool marker is removed.
 
