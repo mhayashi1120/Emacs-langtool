@@ -171,21 +171,8 @@
 ;;
 ;;     M-x langtool-show-message-at-point
 
-;; * Show LanguageTool report automatically by `popup'
-;;   This idea come from:
-;;   http://d.hatena.ne.jp/LaclefYoshi/20150912/langtool_popup
-;;
-;;     (defun langtool-autoshow-detail-popup (overlays)
-;;       (when (require 'popup nil t)
-;;         ;; Do not interrupt current popup
-;;         (unless (or popup-instances
-;;                     ;; suppress popup after type `C-g' .
-;;                     (memq last-command '(keyboard-quit)))
-;;           (let ((msg (langtool-details-error-message overlays)))
-;;             (popup-tip msg)))))
-;;
-;;     (setq langtool-autoshow-message-function
-;;           'langtool-autoshow-detail-popup)
+;; * You can use optional package `langtool-popup` in this repository.
+;;   To show automatically popup the cursor.
 
 ;; * To finish checking. All langtool marker is removed.
 ;;
