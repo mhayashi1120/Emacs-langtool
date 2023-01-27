@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.2.2
+;; Version: 2.3.0
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -114,7 +114,7 @@
 ;;     (global-set-key "\C-x4W" 'langtool-check-done)
 ;;     (global-set-key "\C-x4l" 'langtool-switch-default-language)
 ;;     (global-set-key "\C-x44" 'langtool-show-message-at-point)
-;;     (global-set-key "\C-x4c" 'langtool-correct-buffer)
+;;     (global-set-key "\C-x4c" 'langtool-interactive-correction)
 
 ;; * Default language is detected by LanguageTool automatically.
 ;;   Please set `langtool-default-language` if you need specific language.
@@ -1708,10 +1708,9 @@ Restrict to selection when region is activated.
   (setq langtool-default-language lang)
   (message "Now default language is `%s'" lang))
 
-(defun langtool-correct-buffer ()
-  "Execute interactive correction after `langtool-check'"
-  (interactive)
-  (let ((ovs (langtool--overlays-region (point-min) (point-max))))
+(defun langtool-correct-region (start end)
+  "Execute interactive correction after `langtool-check' on the region."
+  (let ((ovs (langtool--overlays-region start end)))
     (if (null ovs)
         (message "No error found. %s"
                  (substitute-command-keys
@@ -1720,6 +1719,25 @@ Restrict to selection when region is activated.
                    "or type \\[langtool-check] to re-check buffer")))
       (barf-if-buffer-read-only)
       (langtool--correction ovs))))
+
+;; Remaining backward compat. Should use `langtool-interactive-correction'
+(defun langtool-correct-buffer ()
+  "Execute interactive correction after `langtool-check'"
+  (interactive)
+  (langtool-correct-region (point-min) (point-max)))
+
+(defun langtool-interactive-correction ()
+  "Execute interactive correction for the current editor context.
+If region active, just correct that range."
+  (interactive)
+  (cond
+   ((region-active-p)
+    (let ((start (region-beginning))
+          (end (region-end)))
+      (deactivate-mark)
+      (langtool-correct-region start end)))
+   (t
+    (langtool-correct-region (point-min) (point-max)))))
 
 (defun langtool-server-stop ()
   "Terminate LanguageTool HTTP server."
