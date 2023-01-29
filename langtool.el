@@ -895,12 +895,12 @@ Ordinary no need to change this."
       (error "LanguageTool command not executable")))
    ((or (null langtool-java-bin)
         (not (executable-find langtool-java-bin)))
-    (error "java command is not found")))
+    (error "`java` command is not found")))
   (cond
    (langtool-java-classpath)
    (langtool-language-tool-jar
     (unless (file-readable-p langtool-language-tool-jar)
-      (error "langtool jar file is not readable"))))
+      (error "LanguageTool jar file is not readable"))))
   (when langtool-buffer-process
     (error "Another process is running")))
 
@@ -1619,7 +1619,7 @@ See the Commentary section for `popup' implementation."
       (or (cdr (assoc key set)) key))))
 
 (defun langtool-goto-next-error ()
-  "Obsoleted function. Should use `langtool-correct-buffer'.
+  "Obsoleted function.  Should use `langtool-correct-buffer'.
 Go to next error."
   (interactive)
   (let ((overlays (langtool--overlays-region (point) (point-max))))
