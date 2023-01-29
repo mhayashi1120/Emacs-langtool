@@ -1721,7 +1721,7 @@ Restrict to selection when region is activated.
 If region active, just correct that range."
   (interactive)
   (cond
-   ((region-active-p)
+   ((langtool-region-active-p)
     (let ((start (region-beginning))
           (end (region-end)))
       (deactivate-mark)
