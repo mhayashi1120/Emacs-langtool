@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.3.0
+;; Version: 2.3.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -1715,6 +1715,11 @@ Restrict to selection when region is activated.
   "Execute interactive correction after `langtool-check'"
   (interactive)
   (langtool-correct-region (point-min) (point-max)))
+
+(defun langtool-correct-at-point ()
+  "Execute interactive correction at the point"
+  (interactive)
+  (langtool-correct-region (point) (point)))
 
 (defun langtool-interactive-correction ()
   "Execute interactive correction for the current editor context.
