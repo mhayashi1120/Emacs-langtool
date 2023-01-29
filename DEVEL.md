@@ -45,5 +45,6 @@ Try to correct buffer (C-x 4 c)
 # Release
 
 1. Test
-2. Add tag (`git tag **version`) if enough changes (for stable melpa)
+2. Add tag (`git tag **version**`) if enough changes (for stable melpa)
+   If extra package should append prefix before **version** (which depend on melpa recipe :version-regexp).
 3. `git push` / `git push --tags`
