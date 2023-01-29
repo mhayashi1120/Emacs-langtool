@@ -29,7 +29,7 @@
 ;; ## Install:
 ;;
 ;; Put this file into load-path'ed directory, and byte compile it if
-;; desired. And put the following expression into your ~/.emacs.
+;; desired.  And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool-popup)
 
@@ -44,6 +44,8 @@
 (require 'langtool)
 
 (defun langtool-popup-autoshow-detail (overlays)
+  "Popup LanguageTool message (on OVERLAYS) with `popup`."
+
   ;; Do not interrupt current popup
   (unless (or popup-instances
               ;; suppress popup after type `C-g' .
@@ -56,6 +58,7 @@
 
 ;; To restore default while `unload-feature'
 (defun langtool-popup-unload-function ()
+  "Called when `unload-feature` ."
   ;; FIXME: or get defcustom form (Unable get `default-value`)
   (setq langtool-autoshow-message-function
         'langtool-autoshow-default-message))

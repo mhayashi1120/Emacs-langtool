@@ -32,7 +32,7 @@
 ;; https://languagetool.org/
 ;;
 ;; Put this file into load-path'ed directory, and byte compile it if
-;; desired. And put the following expression into your ~/.emacs.
+;; desired.  And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool)
 ;;
@@ -65,7 +65,7 @@
 ;; 1. Command line
 ;;
 ;;  This setting should be set, if you use rest of clients, to get full of
-;;  completion support. And you should be set the variables before load
+;;  completion support.  And you should be set the variables before load
 ;;  this library.
 ;;
 ;;     (setq langtool-language-tool-jar "/path/to/languagetool-commandline.jar")
@@ -86,7 +86,7 @@
 
 ;; 2. HTTP server & client
 ;;
-;;  You can use HTTP server implementation. This is very fast after listen server,
+;;  You can use HTTP server implementation.  This is very fast after listen server,
 ;;  but has security risk if there are multiple user on a same host.
 ;;
 ;;     (setq langtool-language-tool-server-jar "/path/to/languagetool-server.jar")
@@ -103,7 +103,7 @@
 ;;           langtool-http-server-port 8082)
 ;;
 ;; Now testing although, that running instance is working under HTTPSServer or via
-;; general ssl support (e.g. nginx) following may be working. Again, this is now
+;; general ssl support (e.g. nginx) following may be working.  Again, this is now
 ;; testing, so please open issue when the ssl/tls connection is not working.
 ;;
 ;;     (setq langtool-http-server-stream-type 'tls)
@@ -130,7 +130,7 @@
 ;;
 ;;     (setq langtool-java-bin "/path/to/java")
 
-;; * Maybe your LanguageTool have launcher. (e.g. Gentoo)
+;; * Maybe your LanguageTool have launcher.  (e.g. Gentoo)
 ;;   You need to set `langtool-bin'.
 ;;   See https://github.com/mhayashi1120/Emacs-langtool/issues/24
 ;;
@@ -159,7 +159,7 @@
 ;;
 ;;     M-x langtool-check
 ;;
-;;   Check with different language. You can complete supported language
+;;   Check with different language.  You can complete supported language
 ;;   with C-i/TAB
 ;;
 ;;     C-u M-x langtool-check
@@ -176,7 +176,7 @@
 ;; * You can use extension package `langtool-popup` in this repository.
 ;;   To show automatically popup the cursor.
 
-;; * To finish checking. All langtool marker is removed.
+;; * To finish checking.  All langtool marker is removed.
 ;;
 ;;     M-x langtool-check-done
 
@@ -266,9 +266,7 @@ This java command holds LanguageTool process.
 Otherwise, function which return above value.
 
 e.g. ( Described at http://wiki.languagetool.org/command-line-options )
-\(setq langtool-java-user-arguments '(\"-Dfile.encoding=UTF-8\"))
-
-"
+\(setq langtool-java-user-arguments '(\"-Dfile.encoding=UTF-8\"))"
   :group 'langtool
   :type '(choice
           (repeat string)
@@ -291,8 +289,7 @@ Very fast, but do not use it if there is unreliable user on a same host."
   "Normally should be \"localhost\" . Do not set the untrusted host/network.
 Your post may not be encrypted application layer, so your privacy may be leaked.
 
-Please set `langtool-http-server-port' either.
-"
+Please set `langtool-http-server-port' either."
   :group 'langtool
   :type 'string)
 
@@ -309,7 +306,7 @@ Valid arguments are same to above except `nil'. This means `plain'."
   :type 'symbol)
 
 (defcustom langtool-java-classpath nil
-  "Custom classpath to use on special environment. (e.g. Arch Linux)
+  "Custom classpath to use on special environment.  (e.g. Arch Linux)
 Do not set both of this variable and `langtool-language-tool-jar'.
 
 https://github.com/mhayashi1120/Emacs-langtool/pull/12
@@ -319,8 +316,8 @@ https://github.com/mhayashi1120/Emacs-langtool/issues/8"
 
 (defcustom langtool-default-language nil
   "Language name pass to LanguageTool command.
-This is string which indicate locale or `auto' or `nil'.
-Currently `auto' and `nil' is a same meaning."
+This is string which indicate locale or `auto' or nil.
+Currently `auto' and nil is a same meaning."
   :group 'langtool
   :type '(choice
           string
@@ -334,8 +331,7 @@ Currently `auto' and `nil' is a same meaning."
 
 (defcustom langtool-disabled-rules nil
   "Disabled rules pass to LanguageTool.
-String that separated by comma or list of string.
-"
+String that separated by comma or list of string."
   :group 'langtool
   :type '(choice
           (list string)
@@ -343,13 +339,12 @@ String that separated by comma or list of string.
 
 (defcustom langtool-user-arguments nil
   "Similar to `langtool-java-user-arguments' except this list is appended
- after `-jar' argument.
+after `-jar' argument.
 
 Valid values are described below:
 http://wiki.languagetool.org/command-line-options
 
-Do not change this variable if you don't understand what you are doing.
-"
+Do not change this variable if you don't understand what you are doing."
   :group 'langtool
   :type '(choice
           (repeat string)
@@ -360,8 +355,7 @@ Do not change this variable if you don't understand what you are doing.
 You can pass `--config' option to the server that indicate java property file.
 
 You can see all valid arguments with following command (Replace path by yourself):
-java -jar /path/to/languagetool-server.jar --help
-"
+java -jar /path/to/languagetool-server.jar --help"
   :group 'langtool
   :type '(choice
           (repeat string)
@@ -467,7 +461,7 @@ Call just before POST with `application/x-www-form-urlencoded'."
   (save-excursion
     (goto-char (point-min))
     (unless (re-search-forward "^\r\n" nil t)
-      (error "Parse error. Not found http header separator."))
+      (error "Parse error.  Not found http header separator"))
     (let (status headers body-start)
       (setq body-start (point))
       (forward-line -1)
@@ -475,7 +469,7 @@ Call just before POST with `application/x-www-form-urlencoded'."
         (narrow-to-region (point-min) (point))
         (goto-char (point-min))
         (unless (looking-at "^HTTP/[0-9.]+[\s\t]+\\([0-9]+\\)")
-          (error "Parse error. Not found HTTP status code"))
+          (error "Parse error.  Not found HTTP status code"))
         (setq status (string-to-number (match-string-no-properties 1)))
         (forward-line)
         (while (not (eobp))
@@ -825,7 +819,7 @@ Ordinary no need to change this."
         langtool-bin)
     'commandline)
    (t
-    (error "There is no valid setting."))))
+    (error "There is no valid setting"))))
 
 (defun langtool--apply-checks (proc checks)
   (let ((source (process-get proc 'langtool-source-buffer))
@@ -1117,7 +1111,7 @@ Ordinary no need to change this."
               (throw 'rendezvous t)))
           (unless (eq (process-status proc) 'run)
             (langtool-server-ensure-stop proc)
-            (error "Failed to start LanguageTool Server."))
+            (error "Failed to start LanguageTool Server"))
           (message "%s." (current-message))
           (accept-process-output proc 0.1 nil t))))))
 
@@ -1634,7 +1628,7 @@ Go to next error."
      (lambda (ov) (< (point) (overlay-start ov))))))
 
 (defun langtool-goto-previous-error ()
-  "Obsoleted function. Should use `langtool-correct-buffer'.
+  "Obsoleted function.  Should use `langtool-correct-buffer'.
 Goto previous error."
   (interactive)
   (let ((overlays (langtool--overlays-region (point-min) (point))))
@@ -1676,8 +1670,7 @@ Goto previous error."
 Optional \\[universal-argument] read LANG name.
 
 You can change the `langtool-default-language' to apply all session.
-Restrict to selection when region is activated.
-"
+Restrict to selection when region is activated."
   (interactive
    (when current-prefix-arg
      (list (langtool-read-lang-name))))
@@ -1693,7 +1686,7 @@ Restrict to selection when region is activated.
 
 ;;;###autoload
 (defun langtool-switch-default-language (lang)
-  "Switch `langtool-default-language' to LANG"
+  "Switch `langtool-default-language' to LANG."
   (interactive (list (langtool-read-lang-name)))
   (setq langtool-default-language lang)
   (message "Now default language is `%s'" lang))
@@ -1712,12 +1705,12 @@ Restrict to selection when region is activated.
 
 ;; Remaining backward compat. Should use `langtool-interactive-correction'
 (defun langtool-correct-buffer ()
-  "Execute interactive correction after `langtool-check'"
+  "Execute interactive correction after `langtool-check'."
   (interactive)
   (langtool-correct-region (point-min) (point-max)))
 
 (defun langtool-correct-at-point ()
-  "Execute interactive correction at the point"
+  "Execute interactive correction at the point."
   (interactive)
   (langtool-correct-region (point) (point)))
 
