@@ -7,7 +7,7 @@
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
 ;; Version: 2.3.1
-;; Package-Requires: ((cl-lib "0.3"))
+;; Package-Requires: ((emacs "24.3"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -1236,8 +1236,7 @@ Ordinary no need to change this."
                   ("text" ,text)
                   ,@(and langtool-mother-tongue
                          `(("motherTongue" ,langtool-mother-tongue)))
-                  ("disabledRules" ,disabled-rules)
-                  ))
+                  ("disabledRules" ,disabled-rules)))
          query-string)
     (when (and langtool-client-filter-query-function
                (functionp langtool-client-filter-query-function))
@@ -1478,8 +1477,7 @@ Ordinary no need to change this."
   (let ((help-1 "[q/Q]uit correction; [c/C]lear the colorized text; ")
         (help-2 "[i/I]gnore the rule over current session.")
         (help-3 "[e/E]dit the buffer manually")
-        (help-4 "SPC skip; DEL move backward;")
-        )
+        (help-4 "SPC skip; DEL move backward;"))
     (save-window-excursion
       (unwind-protect
           (let ((resize-mini-windows 'grow-only))
