@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 27 or later
-;; Version: 1.0.0
+;; Version: 1.0.1
 ;; Package-Requires: ((emacs "24.3") (popup "20221231.1634"))
 
 ;; This program is free software; you can redistribute it and/or
