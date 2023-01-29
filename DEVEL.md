@@ -5,8 +5,6 @@
 Build new JDK to try the newest LanguageTool.
 https://wiki.debian.org/JavaPackage
 
-
-
 # Test
 
 ## create .test-init.el
@@ -39,9 +37,13 @@ Try to correct buffer (C-x 4 c)
 
 # TODO
 
-unsupport 3.x
+- more unit test ( for each 4.x )
+- check version dependent code. (old code is remaining)
+- automated build on github action
 
-more unit test ( for each 4.x )
 
-check version dependent code. (old code is remaining)
+# Release
 
+1. Test
+2. Add tag (`git tag **version`) if enough changes (for stable melpa)
+3. `git push` / `git push --tags`

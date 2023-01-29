@@ -23,8 +23,8 @@ Confirmed working on following environment
 
 `java --version`
 
-> openjdk 17.0.4 2022-07-19
-> OpenJDK Runtime Environment (build 17.0.4+8-Debian-1deb11u1)
+> openjdk 17.0.4 2022-07-19  
+> OpenJDK Runtime Environment (build 17.0.4+8-Debian-1deb11u1)  
 > OpenJDK 64-Bit Server VM (build 17.0.4+8-Debian-1deb11u1, mixed mode, sharing)
 
 ### LanguageTool
