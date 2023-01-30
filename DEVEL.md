@@ -39,9 +39,9 @@ Try to correct buffer (C-x 4 c)
 
 - more unit test ( for each 4.x )
 - check version dependent code. (old code is remaining)
-- automated build/test on Github Action
+- automated build/test on Github Action (27.x, 28.x, latest)
 - reconsider .test-init.el about on Github Action (or .test-init.el.sample)
-
+- langtool-details-error-message -> langtool-simple-error-message as customize option
 
 # Release
 
