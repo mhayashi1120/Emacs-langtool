@@ -354,7 +354,8 @@ Do not change this variable if you don't understand what you are doing."
   "`langtool-language-tool-server-jar' customize arguments.
 You can pass `--config' option to the server that indicate java property file.
 
-You can see all valid arguments with following command (Replace path by yourself):
+You can see all valid arguments with following command
+  (Replace path by yourself):
 java -jar /path/to/languagetool-server.jar --help"
   :group 'langtool
   :type '(choice
@@ -1175,7 +1176,8 @@ Ordinary no need to change this."
                                 msg2))
                        ;; No need this value when json
                        (context nil)
-                       line column)
+                       (line nil)
+                       (column nil))
                   (setq checks (cons
                                  (list line column len suggestions
                                        msg1 message rule-id context
@@ -1541,8 +1543,8 @@ Ordinary no need to change this."
 
 (defcustom langtool-autoshow-message-function
   'langtool-autoshow-default-message
-  "Function with one argument which displaying error overlays reported by LanguageTool.
-These overlays hold some useful properties:
+  "Function with one argument which displaying error overlays reported
+ by LanguageTool. These overlays hold some useful properties:
  `langtool-simple-message', `langtool-rule-id', `langtool-suggestions' .
 `langtool-autoshow-default-message' is a default/sample implementations.
 See the Commentary section for `popup' implementation."
