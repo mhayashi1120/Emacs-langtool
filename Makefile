@@ -3,7 +3,7 @@
 LOAD_PATH = -L . 
 LOAD_PATH += $(POPUP_EL_PATH)
 
-EMACS := emacs
+EMACS ?= emacs
 BATCH := $(EMACS) -Q -batch $(LOAD_PATH)
 
 EL = langtool.el
