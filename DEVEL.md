@@ -39,7 +39,8 @@ Try to correct buffer (C-x 4 c)
 
 - more unit test ( for each 4.x )
 - check version dependent code. (old code is remaining)
-- automated build on github action
+- automated build/test on Github Action
+- reconsider .test-init.el about on Github Action (or .test-init.el.sample)
 
 
 # Release
