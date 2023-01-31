@@ -1152,7 +1152,7 @@ Ordinary no need to change this."
         (langtool-adapter-ensure-internal proc)
         proc))))
 
-(defun langtool-client--parse-response-body/json ()
+(defun langtool-client--parse-response-json ()
   (let* ((json (json-read))
          (matches (cdr (assq 'matches json)))
          (software (cdr (assq 'software json)))
@@ -1190,7 +1190,7 @@ Ordinary no need to change this."
   (let ((ct (cdr (assoc-string "content-type" http-headers t))))
     (cond
      ((string= ct "application/json")
-      (langtool-client--parse-response-body/json))
+      (langtool-client--parse-response-json))
      (t
       (error "Not a supported Content-Type %s" ct)))))
 
