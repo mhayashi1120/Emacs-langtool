@@ -34,7 +34,7 @@
 ;;     (require 'langtool-popup)
 ;;     (setq langtool-autoshow-message-function 'langtool-popup-autoshow-detail)
 ;;
-;; Or install from `pacakge`
+;; Or use Melpa (https://melpa.org/)
 
 ;; ## Usage:
 ;;
@@ -46,7 +46,7 @@
 (require 'popup)
 (require 'langtool)
 
-(defun langtool-popup-autoshow-detail (overlays)
+(defun langtool-popup-autoshow (overlays)
   "Popup LanguageTool message (on OVERLAYS) with `popup`."
 
   ;; Do not interrupt current popup
@@ -56,12 +56,15 @@
     (let ((msg (langtool-details-error-message overlays)))
       (popup-tip msg))))
 
-;;;###autoload(setq langtool-autoshow-message-function 'langtool-popup-autoshow-detail)
+;; Keep Compat
+(defalias 'langtool-popup-autoshow-detail 'langtool-popup-autoshow)
+
+;;;###autoload(setq langtool-autoshow-message-function 'langtool-popup-autoshow)
 
 ;; To restore default while `unload-feature'
 (defun langtool-popup-unload-function ()
   "Called when `unload-feature` ."
-  (when (eq langtool-autoshow-message-function 'langtool-popup-autoshow-detail)
+  (when (eq langtool-autoshow-message-function 'langtool-popup-autoshow)
     ;; FIXME: or get defcustom form (Unable get by `default-value`)
     (setq langtool-autoshow-message-function
           'langtool-autoshow-default-message)))
