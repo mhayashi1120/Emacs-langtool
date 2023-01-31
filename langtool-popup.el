@@ -32,6 +32,9 @@
 ;; desired.  And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool-popup)
+;;     (setq langtool-autoshow-message-function 'langtool-popup-autoshow-detail)
+;;
+;; Or install from `pacakge`
 
 ;; ## Usage:
 ;;
