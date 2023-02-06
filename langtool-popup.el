@@ -5,9 +5,9 @@
 ;; Author: Masahiro Hayashi <mhayashi1120@gmail.com>
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
-;; Emacs: GNU Emacs 27 or later
+;; Emacs: GNU Emacs 25 or later
 ;; Version: 1.1.0
-;; Package-Requires: ((emacs "24.3") (popup "0.5.9") (langtool "2.3.2"))
+;; Package-Requires: ((emacs "25.1") (popup "0.5.9") (langtool "2.3.2"))
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -32,7 +32,7 @@
 ;; desired.  And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool-popup)
-;;     (setq langtool-autoshow-message-function 'langtool-popup-autoshow-detail)
+;;     (setq langtool-autoshow-message-function 'langtool-popup-autoshow)
 ;;
 ;; Or use Melpa (https://melpa.org/)
 
@@ -56,10 +56,10 @@
     (let ((msg (langtool-details-error-message overlays)))
       (popup-tip msg))))
 
-;; Keep Compat
+;; To keep Compat
 (defalias 'langtool-popup-autoshow-detail 'langtool-popup-autoshow)
 
-;;;###autoload(setq langtool-autoshow-message-function 'langtool-popup-autoshow)
+(setq langtool-autoshow-message-function 'langtool-popup-autoshow)
 
 ;; To restore default while `unload-feature'
 (defun langtool-popup-unload-function ()
