@@ -1,25 +1,95 @@
 -include env.mk
 
-LOAD_PATH = -L . 
-LOAD_PATH += $(POPUP_EL_PATH)
-
 EMACS ?= emacs
-BATCH := $(EMACS) -Q -batch $(LOAD_PATH)
+NEEDED-PACKAGES ?= popup
 
-EL = langtool.el
+BATCH := $(EMACS) -Q -batch
+ifdef ELPA-DIR
+	BATCH += -eval "(setq package-user-dir (expand-file-name \"$(ELPA-DIR)\"))"
+endif
+
+# This come from `package-lint/run-tests.sh`
+define package-installer
+  "(progn \
+   (require 'package) \
+   (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) \
+   (package-initialize) \
+   (package-refresh-contents) \
+   (dolist (pkg '($(1))) \
+    (unless (package-installed-p pkg) \
+      (package-install pkg))))"
+endef
+
+###
+### Command
+###
+
+BUILD_BATCH := $(BATCH) -eval "(require 'package)" -f package-initialize
+ifndef EMACS_LINT_IGNORE
+	BUILD_BATCH += -eval "(setq byte-compile-error-on-warn t)"
+endif
+
+ifdef EMACS_LINT_IGNORE
+	LINT_BATCH := true
+else
+	LINT_BATCH := $(BATCH) -eval $(call package-installer, package-lint)
+endif
+
+CI_BATCH := $(BATCH) -eval $(call package-installer, package-lint $(NEEDED-PACKAGES))
+
+###
+### Files
+###
+
+EL := langtool.el
 EL += langtool-popup.el
 ELC := $(EL:%.el=%.elc)
+BUILD_GENERATED := *.elc
+MAINTAINER_GENERATED := elpa *~
 
-all: compile
+LOAD_EL := $(EL:%=-l %)
+LOAD_ELC := $(ELC:%=-l %)
+
+###
+### General rule
+###
+
+.PHONY: all check compile clean
+
+all: check
 
 check: compile
-	$(BATCH) $(EL:%=-l %)  -l .test-init.el -l langtool-test.el \
-		-f ert-run-tests-batch-and-exit
-	$(BATCH) $(ELC:%=-l %)  -l .test-init.el -l langtool-test.el \
-		-f ert-run-tests-batch-and-exit
+	$(BUILD_BATCH) $(LOAD_EL) -l langtool-test.el -f ert-run-tests-batch-and-exit
+	$(BUILD_BATCH) $(LOAD_ELC) -l langtool-test.el -f ert-run-tests-batch-and-exit
 
 compile:
-	$(BATCH) -f batch-byte-compile $(EL)
+	$(BUILD_BATCH) -f batch-byte-compile $(EL)
 
 clean:
-	rm -f $(ELC)
+	rm -rf $(BUILD_GENERATED)
+
+###
+### Maintainer rule
+###
+
+.PHONY: lint package maintainer-clean
+
+lint:
+	$(LINT_BATCH) -f package-lint-batch-and-exit $(EL)
+
+package: lint check compile
+
+
+maintainer-clean: clean
+	rm -rf $(MAINTAINER_GENERATED)
+
+###
+### CI/CD rule
+###
+
+.PHONY: ci prepare-cicd
+
+ci: prepare-cicd package
+
+prepare-cicd:
+	$(CI_BATCH)
