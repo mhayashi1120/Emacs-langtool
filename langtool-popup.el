@@ -32,7 +32,7 @@
 ;; desired.  And put the following expression into your ~/.emacs.
 ;;
 ;;     (require 'langtool-popup)
-;;     (setq langtool-autoshow-message-function 'langtool-popup-autoshow)
+;;     (setq langtool-autoshow-message-function #'langtool-popup-autoshow)
 ;;
 ;; Or use Melpa (https://melpa.org/)
 
@@ -59,7 +59,7 @@
 ;; To keep Compat
 (defalias 'langtool-popup-autoshow-detail 'langtool-popup-autoshow)
 
-(setq langtool-autoshow-message-function 'langtool-popup-autoshow)
+(setq langtool-autoshow-message-function #'langtool-popup-autoshow)
 
 ;; To restore default while `unload-feature'
 (defun langtool-popup-unload-function ()
@@ -67,7 +67,7 @@
   (when (eq langtool-autoshow-message-function 'langtool-popup-autoshow)
     ;; FIXME: or get defcustom form (Unable get by `default-value`)
     (setq langtool-autoshow-message-function
-          'langtool-autoshow-default-message)))
+          #'langtool-autoshow-default-message)))
 
 (provide 'langtool-popup)
 
