@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.3.4
+;; Version: 2.3.5
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -1352,7 +1352,8 @@ Ordinary no need to change this."
        (when (and command args
                   (executable-find command)
                   (= (langtool--with-java-environ
-                      (apply #'call-process command nil t nil args) 0)))
+                      (apply #'call-process command nil t nil args))
+                     0))
          (goto-char (point-min))
          (funcall parser))))
     (_
