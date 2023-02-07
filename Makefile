@@ -10,7 +10,9 @@ NEEDED-PACKAGES ?= popup
 BATCH := $(EMACS) -Q -batch
 
 EL := langtool.el
-EL += langtool-popup.el
+ifndef LANGTOOL_POPUP_IGNORE
+  EL += langtool-popup.el
+endif
 
 TEST_EL := langtool-test.el
 
