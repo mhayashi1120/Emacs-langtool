@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.3.5
+;; Version: 2.3.6
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -266,7 +266,7 @@ This java command holds LanguageTool process.
 Otherwise, function which return above value.
 
 e.g. ( Described at http://wiki.languagetool.org/command-line-options )
-\(setq langtool-java-user-arguments '(\"-Dfile.encoding=UTF-8\"))"
+\(setq langtool-java-user-arguments \\='(\"-Dfile.encoding=UTF-8\"))"
   :group 'langtool
   :type '(choice
           (repeat string)
