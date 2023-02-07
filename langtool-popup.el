@@ -57,7 +57,7 @@
       (popup-tip msg))))
 
 ;; To keep Compat
-(defalias 'langtool-popup-autoshow-detail 'langtool-popup-autoshow)
+(defalias 'langtool-popup-autoshow-detail #'langtool-popup-autoshow)
 
 (setq langtool-autoshow-message-function #'langtool-popup-autoshow)
 
