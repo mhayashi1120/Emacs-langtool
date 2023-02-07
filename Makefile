@@ -1,9 +1,23 @@
+###
+### Package
+###
+
 -include env.mk
 
 EMACS ?= emacs
 NEEDED-PACKAGES ?= popup
 
 BATCH := $(EMACS) -Q -batch
+
+EL := langtool.el
+EL += langtool-popup.el
+
+TEST_EL := langtool-test.el
+
+##
+## package.el
+##
+
 ifdef ELPA-DIR
 	BATCH += -eval "(setq package-user-dir (expand-file-name \"$(ELPA-DIR)\"))"
 endif
@@ -41,14 +55,14 @@ CI_BATCH := $(BATCH) -eval $(call package-installer, package-lint $(NEEDED-PACKA
 ### Files
 ###
 
-EL := langtool.el
-EL += langtool-popup.el
 ELC := $(EL:%.el=%.elc)
 BUILD_GENERATED := *.elc
 MAINTAINER_GENERATED := elpa *~
 
 LOAD_EL := $(EL:%=-l %)
 LOAD_ELC := $(ELC:%=-l %)
+
+LOAD_TEST_EL := $(TEST_EL:%=-l %)
 
 ###
 ### General rule
@@ -59,8 +73,8 @@ LOAD_ELC := $(ELC:%=-l %)
 all: check
 
 check: compile
-	$(BUILD_BATCH) $(LOAD_EL) -l langtool-test.el -f ert-run-tests-batch-and-exit
-	$(BUILD_BATCH) $(LOAD_ELC) -l langtool-test.el -f ert-run-tests-batch-and-exit
+	$(BUILD_BATCH) $(LOAD_EL) $(LOAD_TEST_EL) -f ert-run-tests-batch-and-exit
+	$(BUILD_BATCH) $(LOAD_ELC) $(LOAD_TEST_EL) -f ert-run-tests-batch-and-exit
 
 compile:
 	$(BUILD_BATCH) -f batch-byte-compile $(EL)
