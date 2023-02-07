@@ -6,7 +6,7 @@
 ;; Keywords: docs
 ;; URL: https://github.com/mhayashi1120/Emacs-langtool
 ;; Emacs: GNU Emacs 24 or later
-;; Version: 2.3.6
+;; Version: 2.3.7
 ;; Package-Requires: ((emacs "24.3"))
 
 ;; This program is free software; you can redistribute it and/or
@@ -498,7 +498,7 @@ Call just before POST with `application/x-www-form-urlencoded'."
              (cons (point) (+ (point) length)))
         (and (looking-at regexp)
              (cons (match-beginning 1) (match-end 1)))
-        (let ((beg (min (point-at-bol) (- (point) 20))))
+        (let ((beg (min (line-beginning-position) (- (point) 20))))
           (cl-loop while (and (not (bobp))
                               (<= beg (point)))
                    ;; backward just sentence length to search sentence after point
@@ -1008,7 +1008,7 @@ Ordinary no need to change this."
             (goto-char (point-min))
             (setq errmsg
                   (format "LanguageTool exited abnormally with code %d (%s)"
-                          code (buffer-substring (point) (point-at-eol))))))
+                          code (buffer-substring (point) (line-end-position))))))
         (kill-buffer pbuf))
        (t
         (setq errmsg "Buffer was dead")))
