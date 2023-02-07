@@ -7,7 +7,7 @@
 EMACS ?= emacs
 NEEDED-PACKAGES ?= popup
 
-BATCH := $(EMACS) -Q -batch
+BATCH := $(EMACS) -Q -batch -L .
 
 EL := langtool.el
 ifndef LANGTOOL_POPUP_IGNORE
