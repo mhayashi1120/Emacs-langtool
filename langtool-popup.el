@@ -62,13 +62,15 @@
 (defvar langtool-autoshow-message-function)
 (setq langtool-autoshow-message-function #'langtool-popup-autoshow)
 
+(declare-function langtool-autoshow-default-message "langtool")
+
 ;; To restore default while `unload-feature'
 (defun langtool-popup-unload-function ()
   "Called when `unload-feature` ."
   (when (eq langtool-autoshow-message-function 'langtool-popup-autoshow)
     ;; FIXME: or get defcustom form (Unable get by `default-value`)
     (setq langtool-autoshow-message-function
-          'langtool-autoshow-default-message)))
+          #'langtool-autoshow-default-message)))
 
 (provide 'langtool-popup)
 
