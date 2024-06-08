@@ -349,6 +349,14 @@ String that separated by comma or list of string."
           (list string)
           string))
 
+(defcustom langtool-level nil
+  "If set to picky, additional rules will be activated"
+  :group 'langtool
+  :type '(choice
+          (const nil)
+          (const default)
+          (const picky)))
+
 (defcustom langtool-user-arguments nil
   "Similar to `langtool-java-user-arguments' except this list is appended
 after `-jar' argument.
@@ -1255,6 +1263,8 @@ Ordinary no need to change this."
                          `(("username" ,langtool-http-server-username)))
                   ,@(and langtool-http-server-apiKey
                          `(("username" ,langtool-http-server-apiKey)))
+                  ,@(and langtool-level
+                         `(("level" ,langtool-level)))
                   ))
          query-string)
     (when (and langtool-client-filter-query-function
