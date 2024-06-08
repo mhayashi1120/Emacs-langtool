@@ -305,6 +305,18 @@ Valid arguments are same to above except `nil'. This means `plain'."
   :group 'langtool
   :type 'symbol)
 
+(defcustom langtool-http-server-username nil
+  "Username to access premium features"
+  :group 'langtool
+  :type 'string)
+
+(defcustom langtool-http-server-apiKey nil
+  "Access token to access premium features
+  https://languagetool.org/editor/settings/access-tokens"
+  :group 'langtool
+  :type 'string)
+
+
 (defcustom langtool-java-classpath nil
   "Custom classpath to use on special environment.  (e.g. Arch Linux)
 Do not set both of this variable and `langtool-language-tool-jar'.
@@ -336,6 +348,14 @@ String that separated by comma or list of string."
   :type '(choice
           (list string)
           string))
+
+(defcustom langtool-level nil
+  "If set to picky, additional rules will be activated"
+  :group 'langtool
+  :type '(choice
+          (const nil)
+          (const default)
+          (const picky)))
 
 (defcustom langtool-user-arguments nil
   "Similar to `langtool-java-user-arguments' except this list is appended
@@ -1238,7 +1258,14 @@ Ordinary no need to change this."
                   ("text" ,text)
                   ,@(and langtool-mother-tongue
                          `(("motherTongue" ,langtool-mother-tongue)))
-                  ("disabledRules" ,disabled-rules)))
+                  ("disabledRules" ,disabled-rules)
+                  ,@(and langtool-http-server-username
+                         `(("username" ,langtool-http-server-username)))
+                  ,@(and langtool-http-server-apiKey
+                         `(("username" ,langtool-http-server-apiKey)))
+                  ,@(and langtool-level
+                         `(("level" ,langtool-level)))
+                  ))
          query-string)
     (when (and langtool-client-filter-query-function
                (functionp langtool-client-filter-query-function))
