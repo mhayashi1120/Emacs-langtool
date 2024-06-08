@@ -305,6 +305,18 @@ Valid arguments are same to above except `nil'. This means `plain'."
   :group 'langtool
   :type 'symbol)
 
+(defcustom langtool-http-server-username nil
+  "Username to access premium features"
+  :group 'langtool
+  :type 'string)
+
+(defcustom langtool-http-server-apiKey nil
+  "Access token to access premium features
+  https://languagetool.org/editor/settings/access-tokens"
+  :group 'langtool
+  :type 'string)
+
+
 (defcustom langtool-java-classpath nil
   "Custom classpath to use on special environment.  (e.g. Arch Linux)
 Do not set both of this variable and `langtool-language-tool-jar'.
@@ -1238,7 +1250,12 @@ Ordinary no need to change this."
                   ("text" ,text)
                   ,@(and langtool-mother-tongue
                          `(("motherTongue" ,langtool-mother-tongue)))
-                  ("disabledRules" ,disabled-rules)))
+                  ("disabledRules" ,disabled-rules)
+                  ,@(and langtool-http-server-username
+                         `(("username" ,langtool-http-server-username)))
+                  ,@(and langtool-http-server-apiKey
+                         `(("username" ,langtool-http-server-apiKey)))
+                  ))
          query-string)
     (when (and langtool-client-filter-query-function
                (functionp langtool-client-filter-query-function))
