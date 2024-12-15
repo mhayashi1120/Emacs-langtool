@@ -99,6 +99,21 @@ testing, so please open issue when the ssl/tls connection is not working.
 (setq langtool-http-server-stream-type 'tls)
 ```
 
+*Note:* you can use the free plan with the following settings:
+```
+(setq langtool-http-server-host "api.languagetoolplus.com"
+      langtool-http-server-port 443
+      langtool-http-server-stream-type 'tls)
+
+```
+
+Also, if you have a premium account, setup:
+```
+(setq langtool-http-username "<username>"
+      ;; https://languagetool.org/editor/settings/access-tokens
+      langtool-http-apiKey "<your-apiKey>")
+```
+
 ## Optional settings
 
 * Key binding if you desired.
